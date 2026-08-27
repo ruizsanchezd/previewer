@@ -7,6 +7,16 @@ resoluciones a la vez. Sin build, sin framework, sin dependencias más allá de 
 El `README.md` explica el qué y el porqué de casi todo, y está mantenido al día. **Léelo
 antes de tocar las capturas**, que es la parte con más decisiones no obvias detrás.
 
+## Si el usuario quiere publicar o actualizar la app
+
+El proceso está acordado y escrito en el README, en **"Publicar una versión"**. Léelo y
+guíale por los pasos; no improvises uno nuevo ni asumas que se acuerda. En resumen: para
+desarrollar nunca se reinstala nada (`npm start` ya es la app), y la app instalada sólo
+cambia cuando alguien compila un DMG a mano y lo reparte. Fusionar una PR no actualiza la
+app de nadie. La sección de al lado, "Repo y contribuciones", cubre el flujo de PRs, y la
+de "Si algún día molesta ese paso" explica qué desbloquearía la cuenta de Apple Developer
+y por qué todavía no se ha pagado.
+
 ## Cómo trabaja aquí el usuario
 
 - **Es diseñador, no desarrollador.** Explica las cosas en términos de lo que se ve y de

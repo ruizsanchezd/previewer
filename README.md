@@ -15,6 +15,17 @@ Si `npm install` avisa de que el postinstall de Electron está bloqueado
 (`npm warn allow-scripts`), ejecuta `npm approve-scripts` y vuelve a instalar:
 es el paso que descarga el binario de Electron.
 
+`npm start` ejecuta el código de `src/` tal cual: es la app de verdad, no una versión de
+pruebas. **Para desarrollar no hace falta reinstalar nada nunca.** El `.app` de
+Aplicaciones es una foto congelada de la última vez que se compiló y se queda como esté
+hasta que se vuelva a compilar a mano; ver "Publicar una versión". Para cambios de
+interfaz basta ⌘R en la ventana, sin reiniciar.
+
+Ojo: la app instalada y `npm start` **comparten la carpeta de datos** (macOS no distingue
+`previewer` de `Previewer`), así que los sets y el estado guardados son los mismos en las
+dos. Cómodo, pero si se cambia el formato de lo que se guarda en `localStorage`, se cambia
+también para la app instalada.
+
 ## Cómo funciona
 
 Cada panel es un `<webview>` de Electron con un preload propio (`src/guest/guest.cjs`)
@@ -200,16 +211,51 @@ estado que tiene con la página arriba, que puede ser más apagado que al leerlo
 para esa sección concreta, usa el modo viewport. Las páginas de más de 60000px de alto
 se recortan ahí, y el aviso te lo dice.
 
-## Empaquetar y compartir
+## Repo y contribuciones
+
+El remoto es `https://github.com/ruizsanchezd/previewer`, privado. `main` es la fuente de
+la verdad y lleva siempre la última versión publicada. `dist/` y `node_modules/` no se
+suben.
+
+Tener remoto no obliga a nada: se trabaja en local igual que siempre y se hace `push`
+cuando apetece. Para una funcionalidad grande, rama aparte, y `main` se queda entretanto
+con la versión que funciona.
+
+Si alguien del equipo aporta mejoras: rama y Pull Request, nunca commits directos a
+`main`. Antes de fusionar, `git pull` y `npm start` para verlo funcionando de verdad.
+
+**Lo que hay que tener claro: fusionar una PR no actualiza la app de nadie.** GitHub
+guarda código, no la aplicación; son cosas separadas y no hay ninguna conexión entre
+ellas. Ni la app del equipo ni la del propio Daniel cambian hasta que alguien compila un
+DMG y lo reparte. Eso es deliberado y es una ventaja: se pueden acumular varias PRs y
+publicar una sola versión cuando convenga, en vez de que cada merge mueva algo.
+
+## Publicar una versión
+
+El ciclo completo, del cambio fusionado a los Macs del equipo:
+
+1. `git pull` y `npm start`, y comprobar que lo que se va a publicar funciona.
+2. Subir la versión en `package.json` (`1.0.0` → `1.1.0`).
+3. `npm run dist` → deja `dist/Previewer-1.1.0-arm64.dmg`.
+4. Abrir ese DMG y arrastrar a Aplicaciones. macOS pregunta si reemplaza: sí. **No hay
+   que desinstalar la anterior.**
+5. Commit del cambio de versión, `git tag v1.1.0`, `git push && git push --tags`.
+6. Colgar el DMG en un Release de GitHub sobre ese tag (`gh release create v1.1.0
+   dist/Previewer-1.1.0-arm64.dmg`), para que "la última versión" sea un sitio y no un
+   mensaje de Slack perdido.
+7. Avisar al equipo. Cada uno arrastra el DMG nuevo a Aplicaciones y **repite el paso de
+   autorización** de abajo: la aprobación de macOS es por versión, no por app.
+
+No compiles en cada cambio: acumula mejoras y publica cuando la app ya se usaría así.
+Compilar cuesta un rato y no aporta nada mientras se itera.
 
 ```bash
-npm run dist          # Apple Silicon → dist/Previewer-1.0.0-arm64.dmg (~93 MB)
+npm run dist          # Apple Silicon → dist/Previewer-1.1.0-arm64.dmg (~93 MB)
 npm run dist:intel    # sólo si alguien sigue con un Mac Intel
 ```
 
 Sale un `.dmg` que se abre, se arrastra a Aplicaciones y ya. No hay actualización
-automática a propósito: cuando cambies algo, subes la versión en `package.json`,
-reconstruyes y vuelves a compartir el archivo.
+automática, y no por descuido: ver "Si algún día molesta ese paso".
 
 Sólo macOS: la conversión a JPEG usa `sips`, que es de macOS y no tiene equivalente
 gratis en Windows sin meter dependencias.
@@ -237,13 +283,28 @@ mano:
 hay que pasar por Ajustes.) La alternativa por terminal es
 `xattr -dr com.apple.quarantine /Applications/Previewer.app`.
 
+Son 30 segundos y **sólo la primera vez de cada versión**: una vez autorizada, abre con
+doble clic para siempre. Dos avisos: hace falta ser administrador del Mac, así que en
+equipos gestionados por IT con cuentas sin permisos esto se atasca; y al instalar una
+versión nueva hay que repetirlo, porque para macOS cada build sin identidad de
+desarrollador es un programa distinto.
+
 ### Si algún día molesta ese paso
 
 Se quita con una cuenta de Apple Developer (99 €/año): firma con Developer ID +
 notarización y la app abre con doble clic desde el primer momento, sin avisos. Los
 entitlements y el hardened runtime ya están puestos en `build/entitlements.mac.plist`,
 así que el cambio es quitar `"identity": "-"` de `package.json` y añadir las credenciales
-de notarización. No hace falta para uso interno.
+de notarización.
+
+Esa cuenta es también lo que desbloquearía la **actualización automática** (que la app
+mire los Releases de GitHub y se actualice sola, sin DMG ni avisos). El mecanismo de
+macOS se niega a reemplazar una app firmada ad-hoc: comprueba que la versión nueva viene
+del mismo desarrollador que la instalada, y sin identidad real no hay nada que comparar.
+
+Así que los 99 € compran tres cosas de golpe —instalar sin avisos, actualizar sin avisos
+y actualizar solo— y hasta entonces el reparto es a mano. El momento de plantearlo es
+cuando dé pereza avisar al equipo de que hay versión nueva, no antes.
 
 ## Notas
 
