@@ -214,8 +214,12 @@ reconstruyes y vuelves a compartir el archivo.
 Sólo macOS: la conversión a JPEG usa `sips`, que es de macOS y no tiene equivalente
 gratis en Windows sin meter dependencias.
 
-**El icono** se genera de `build/icon.png` a 1024×1024. Mientras no exista ese archivo, la
-app sale con el icono por defecto de Electron.
+**El icono** se genera de `build/icon.png` a 1024×1024. Tiene que ser **opaco de borde a
+borde**, sin transparencia, sin esquinas redondeadas propias y sin sombra: macOS 26 aplica
+él mismo la máscara, la sombra y el brillo del borde. Comprobado a mano: en cuanto el PNG
+tiene un solo píxel transparente, Tahoe deja de tratarlo como icono moderno y lo mete
+dentro de una caja gris clara con el dibujo reducido. La plantilla de 824×824 con márgenes
+que recomiendan los blogs y la propia documentación antigua de Apple provoca justo eso.
 
 ### Lo que tienen que hacer tus compañeros la primera vez
 
