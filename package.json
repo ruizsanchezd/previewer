@@ -1,0 +1,50 @@
+{
+  "name": "previewer",
+  "version": "1.0.0",
+  "description": "Multi-device preview canvas with synchronised scroll, clicks and navigation",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "dist": "electron-builder --mac --arm64",
+    "dist:intel": "electron-builder --mac --x64"
+  },
+  "author": "Daniel Ruiz",
+  "license": "MIT",
+  "build": {
+    "appId": "com.danielruiz.previewer",
+    "productName": "Previewer",
+    "copyright": "Daniel Ruiz",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "src/guest/**"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        }
+      ],
+      "identity": "-",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "dmg": {
+      "artifactName": "Previewer-${version}-${arch}.dmg"
+    }
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^26.15.3"
+  }
+}

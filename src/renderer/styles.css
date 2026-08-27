@@ -1,0 +1,639 @@
+:root {
+  --bg:        #0b0c0e;
+  --bg-raised: #141619;
+  --bg-input:  #1b1e23;
+  --line:      #24282e;
+  --line-soft: #1a1d21;
+  --text:      #e6e8ec;
+  --text-dim:  #8a919c;
+  --text-faint:#5d646e;
+  --accent:    #4c8dff;
+  --accent-dim:#1e3865;
+  --danger:    #ff5f56;
+  --bar-h:     46px;
+  --panel-bar: 30px;
+  --radius:    7px;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+[hidden] { display: none !important; }
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+kbd {
+  font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 4px;
+  color: var(--text-dim);
+}
+
+/* ----------------------------------------------------------- toolbar */
+
+#toolbar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--bar-h);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 84px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag;
+  z-index: 20;
+}
+
+#toolbar .group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+#toolbar .drag-region {
+  position: absolute;
+  inset: 0;
+  -webkit-app-region: drag;
+}
+
+#toolbar > *:not(.drag-region) { position: relative; }
+
+button {
+  font: inherit;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+button:hover  { background: #ffffff0d; color: var(--text); }
+button:active { background: #ffffff14; }
+
+.icon {
+  width: 28px;
+  height: 26px;
+  font-size: 20px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pill {
+  height: 26px;
+  padding: 0 10px;
+  border-color: var(--line);
+  font-size: 12px;
+}
+.pill.ghost { border-color: transparent; }
+
+.toggle {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+  letter-spacing: .02em;
+  border-color: var(--line);
+  border-radius: 5px;
+}
+.toggle.on {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  background: #4c8dff14;
+}
+.toggle.mode {
+  min-width: 30px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 14px;
+}
+
+/* url bar */
+
+.url {
+  flex: 1;
+  min-width: 180px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.url:focus-within { border-color: var(--accent-dim); }
+
+.url .scheme {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.url .scheme.local  { background: #37d67a; }
+.url .scheme.remote { background: var(--accent); }
+.url .scheme.error  { background: var(--danger); }
+
+#url-input {
+  flex: 1;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  user-select: text;
+}
+#url-input::placeholder { color: var(--text-faint); }
+
+.zoom-value {
+  min-width: 46px;
+  height: 26px;
+  font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-dim);
+}
+
+/* ------------------------------------------------------------ canvas */
+
+#viewport {
+  position: fixed;
+  inset: var(--bar-h) 0 0 0;
+  overflow: hidden;
+  background-color: var(--bg);
+  background-image: radial-gradient(circle, #ffffff0f 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+#canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.panel {
+  position: absolute;
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  box-shadow: 0 8px 28px #00000073, 0 0 0 1px var(--line);
+}
+/* Anillo de selección separado del frame, como el focus de un botón. Ancho y
+ * separación van en calc(… * --k) —el contra-escalado del lienzo— para que el
+ * anillo mida siempre lo mismo en pantalla, se vea el canvas al zoom que se vea. */
+.panel.selected {
+  outline: calc(1.5px * var(--k, 1)) solid #fff;
+  outline-offset: calc(3px * var(--k, 1));
+}
+
+/* The label sits outside the frame and is counter-scaled by --k (1 / canvas
+ * scale) so it keeps its on-screen size however far out you zoom. */
+.panel-bar {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  width: calc(100% / var(--k, 1));
+  height: var(--panel-bar);
+  transform: scale(var(--k, 1));
+  transform-origin: 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 4px 2px;
+  cursor: grab;
+  color: var(--text-dim);
+  overflow: hidden;
+}
+.panel-bar:active { cursor: grabbing; }
+
+/* Tiers set by updateDensity(): the label sheds parts as the frame gets
+ * narrower on screen, so titles never overlap the neighbouring panel. */
+.panel-bar[data-density="compact"] .panel-size,
+.panel-bar[data-density="compact"] .panel-badges,
+.panel-bar[data-density="compact"] .theme,
+.panel-bar[data-density="mini"] .panel-name,
+.panel-bar[data-density="mini"] .panel-size,
+.panel-bar[data-density="mini"] .panel-badges,
+.panel-bar[data-density="mini"] .theme,
+.panel-bar[data-density="mini"] .close { display: none; }
+
+.panel-bar[data-density="mini"] .panel-actions { margin-left: 0; }
+
+.panel-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panel-size {
+  flex: none;
+  font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.panel-badges { flex: none; display: flex; gap: 4px; }
+.badge {
+  font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 3px 5px;
+  border-radius: 4px;
+  background: #ffffff0f;
+  color: var(--text-dim);
+}
+.panel-actions { flex: none; margin-left: auto; display: flex; gap: 2px; }
+.panel-actions button { width: 24px; height: 22px; font-size: 13px; }
+.panel-actions .close:hover { background: #ff5f5626; color: var(--danger); }
+
+.panel-body {
+  position: relative;
+  background: #fff;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+/* Electron's <webview> does not propagate a percentage height to the guest
+ * (the inner frame falls back to the 150px iframe default), so the size is
+ * set in explicit pixels from layoutPanel(). */
+.panel webview {
+  display: flex;
+  border: 0;
+}
+.panel-body.loading::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: sweep 1s linear infinite;
+}
+@keyframes sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+/* resize grip */
+.panel-grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: calc(14px * var(--k, 1));
+  height: calc(14px * var(--k, 1));
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, #ffffff33 50%);
+}
+
+/* -------------------------------------------------------- overlays */
+
+#shield {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+/* Por encima del shield que captura el arrastre, y sin ratón propio. */
+#marquee {
+  position: fixed;
+  z-index: 45;
+  pointer-events: none;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 2px;
+}
+#pan-overlay {
+  position: fixed;
+  inset: var(--bar-h) 0 0 0;
+  z-index: 35;
+  cursor: grab;
+}
+#pan-overlay.dragging { cursor: grabbing; }
+
+#empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+#empty-state button { pointer-events: auto; }
+
+.floating {
+  position: absolute;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  background: #191c21e6;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: 0 10px 28px #00000059;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+#float-syncs { top: 10px; right: 10px; }
+#float-zoom  { bottom: 36px; right: 10px; }
+
+/* popover menus */
+
+#popover {
+  position: fixed;
+  z-index: 60;
+  min-width: 190px;
+  max-height: 62vh;
+  overflow-y: auto;
+  padding: 5px;
+  background: #191c21;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: 0 16px 40px #000000a6;
+}
+#popover .head {
+  padding: 7px 9px 5px;
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+#popover .item {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 9px;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--text);
+  font-size: 12px;
+}
+#popover .item:hover { background: var(--accent); color: #fff; }
+#popover .item .meta {
+  margin-left: auto;
+  padding-left: 4px;
+  white-space: nowrap;
+  font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-faint);
+}
+#popover .item:hover .meta { color: #ffffffcc; }
+#popover .item.checked .meta { color: var(--accent); }
+#popover .sep { height: 1px; margin: 5px 0; background: var(--line); }
+
+/* El menú de panel va a ancho fijo, no mínimo: con los acordeones el contenido
+ * más largo cambia al plegar y desplegar, y un ancho elástico haría saltar el
+ * menú bajo el cursor. El valor da aire al .meta de la derecha —«Español (ES)»,
+ * «PNG»— sin que roce la etiqueta. */
+#popover.panel { width: 252px; }
+
+/* acordeones del menú de panel */
+
+#popover .acc-head .acc-chevron {
+  display: flex;
+  color: var(--text-faint);
+  transition: transform .12s ease;
+}
+#popover .acc-head:hover .acc-chevron { color: #ffffffcc; }
+#popover .acc.open .acc-chevron { transform: rotate(90deg); }
+/* Cerrado la cabecera muestra el valor activo; abierto sobra, porque el ● de
+ * la lista ya lo dice, y quitarlo evita leer lo mismo dos veces. */
+#popover .acc.open .acc-head .meta { display: none; }
+/* La sangría alinea las opciones con el texto de la cabecera, no con su
+ * chevron, para que la jerarquía se lea de un vistazo. */
+#popover .acc-body { padding-left: 19px; }
+#popover input.text {
+  width: 100%;
+  height: 26px;
+  margin: 2px 0 4px;
+  padding: 0 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  outline: 0;
+  user-select: text;
+}
+#popover input.text:focus { border-color: var(--accent-dim); }
+
+/* menú de sets */
+
+#popover.wide { min-width: 292px; padding: 6px; }
+
+/* Botón secundario: superficie y borde propios para que se lea como botón sin
+ * competir con las acciones primarias en azul. No usa .item a propósito, que
+ * le metía el hover azul de los items de menú. */
+#popover .save-cta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-align: left;
+  color: var(--text);
+  font-size: 12px;
+}
+#popover .save-cta:hover {
+  background: #23272e;
+  border-color: var(--accent-dim);
+  color: #fff;
+}
+#popover .save-cta .plus {
+  margin-left: auto;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--text-dim);
+}
+#popover .save-cta:hover .plus { color: #fff; }
+
+/* Aire bajo el bloque de guardado, en sus dos modos. Son 7px + los 5px del
+ * margen del separador = 12px, los mismos que hay entre el separador y el
+ * título de abajo (5px de margen + 7px de padding de la cabecera). */
+#popover .save-cta,
+#popover .save-form { margin-bottom: 7px; }
+
+/* Compartidos por el bloque de guardado y el de renombrado. */
+#popover .warn {
+  padding: 3px 2px 1px;
+  font-size: 11px;
+  color: var(--danger);
+}
+#popover .btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px 0 2px;
+}
+#popover .mini {
+  height: 26px;
+  padding: 0 9px;
+  border-color: var(--line);
+  font-size: 11px;
+}
+#popover .mini.primary {
+  color: #fff;
+  background: var(--accent);
+  border-color: transparent;
+}
+#popover .mini.primary:hover { background: #6a9fff; }
+
+/* La altura la fija la fila, no su contenido: así el modo normal y el de
+ * renombrado miden igual y no hay salto al entrar y salir. */
+#popover .set-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 30px;
+}
+#popover .set-open {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--text);
+  font-size: 12px;
+}
+#popover .set-open:hover { background: var(--accent); color: #fff; }
+#popover .set-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#popover .set-tag {
+  flex: none;
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+#popover .set-open:hover .set-tag { color: #ffffffcc; }
+#popover .set-act {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+#popover .set-act svg { display: block; }
+#popover .set-act.del:hover { background: #ff5f5626; color: var(--danger); }
+
+/* La confirmación es la acción principal de la fila: va rellena, frente al
+ * cancelar que se queda en fantasma. El orden importa —:hover y :disabled
+ * empatan en especificidad, así que :disabled va al final para ganar. */
+#popover .set-act.ok {
+  background: var(--accent);
+  color: #fff;
+}
+#popover .set-act.ok:hover { background: #6a9fff; }
+#popover .set-act.ok:disabled {
+  background: var(--bg-input);
+  color: var(--text-faint);
+  cursor: default;
+}
+
+#popover .set-item input.text {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  height: 26px;
+  margin: 0;
+}
+
+/* toast + hints */
+
+#toast {
+  position: fixed;
+  bottom: 42px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: min(560px, calc(100vw - 40px));
+  padding: 8px 10px 8px 14px;
+  background: #22262c;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--text);
+  box-shadow: 0 10px 30px #00000080;
+}
+#toast[hidden] { display: none; }
+
+#toast-spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #ffffff33;
+  border-top-color: var(--text);
+  border-radius: 50%;
+  animation: toast-spin 0.7s linear infinite;
+}
+#toast-spinner[hidden] { display: none; }
+
+@keyframes toast-spin { to { transform: rotate(360deg) } }
+
+@media (prefers-reduced-motion: reduce) {
+  #toast-spinner { animation-duration: 2s }
+}
+
+#toast-msg { min-width: 0 }
+
+#toast-action {
+  flex: none;
+  padding: 4px 9px;
+  background: #ffffff14;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text);
+  cursor: pointer;
+}
+#toast-action:hover { background: #ffffff24 }
+#toast-action[hidden] { display: none; }
+
+#hints {
+  position: fixed;
+  inset: auto 0 0 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 12px;
+  background: #101215e6;
+  border-top: 1px solid var(--line-soft);
+  font-size: 10px;
+  color: var(--text-faint);
+  z-index: 15;
+  pointer-events: none;
+}
+#hints span { display: flex; align-items: center; gap: 3px; }

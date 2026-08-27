@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src *; child-src *;" />
+  <title>Previewer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header id="toolbar">
+    <div class="drag-region"></div>
+
+    <div class="group nav">
+      <button id="btn-back"    class="icon" title="Atrás">‹</button>
+      <button id="btn-forward" class="icon" title="Adelante">›</button>
+      <button id="btn-reload"  class="icon" title="Recargar todo (⌘R)">⟳</button>
+    </div>
+
+    <form id="url-form" class="group url">
+      <span class="scheme" id="url-status"></span>
+      <input id="url-input" type="text" spellcheck="false" autocomplete="off"
+             placeholder="localhost:3000" />
+    </form>
+
+    <div class="group">
+      <button id="btn-add"  class="pill" title="Añadir dispositivo">+ Dispositivo</button>
+      <button id="btn-sets" class="pill" title="Sets guardados">Sets guardados</button>
+    </div>
+  </header>
+
+  <main id="viewport">
+    <div id="canvas"></div>
+    <div id="empty-state">
+      <p>No hay dispositivos en el lienzo.</p>
+      <button id="empty-add" class="pill">+ Añadir dispositivo</button>
+    </div>
+
+    <div id="float-syncs" class="floating">
+      <button class="toggle" data-sync="scroll" title="Sincronizar scroll">Scroll</button>
+      <button class="toggle" data-sync="click"  title="Sincronizar clicks e inputs">Clicks</button>
+      <button class="toggle" data-sync="nav"    title="Sincronizar navegación">Nav</button>
+      <button id="scroll-mode" class="toggle mode" title="Modo de scroll: proporcional o absoluto">%</button>
+    </div>
+
+    <div id="float-zoom" class="floating">
+      <button id="zoom-out" class="icon" title="Alejar">−</button>
+      <button id="zoom-level" class="zoom-value" title="Restablecer al 100%">100%</button>
+      <button id="zoom-in"  class="icon" title="Acercar">+</button>
+      <button id="btn-fit"  class="pill ghost" title="Encajar todo (⌘0)">Encajar</button>
+    </div>
+  </main>
+
+  <div id="marquee" hidden></div>
+  <div id="shield" hidden></div>
+  <div id="pan-overlay" hidden></div>
+  <div id="popover" hidden></div>
+  <div id="toast" hidden>
+    <span id="toast-spinner" hidden></span>
+    <span id="toast-msg"></span>
+    <button id="toast-action" type="button" hidden></button>
+  </div>
+
+  <footer id="hints">
+    <span><kbd>rueda</kbd> scroll sync</span>
+    <span><kbd>⌘</kbd>+<kbd>rueda</kbd> zoom</span>
+    <span><kbd>espacio</kbd>+arrastrar mover lienzo</span>
+    <span><kbd>⌘R</kbd> recargar todo</span>
+    <span><kbd>⌘0</kbd> encajar</span>
+    <span><kbd>arrastrar</kbd> seleccionar frames</span>
+    <span><kbd>clic derecho</kbd> menú</span>
+  </footer>
+
+  <script src="devices.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
