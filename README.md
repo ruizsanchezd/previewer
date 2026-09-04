@@ -142,8 +142,14 @@ Lo que sale, y por qué eso y no la lista entera de propiedades computadas:
   peor que ningún contraste.
 - **Imagen** — el tamaño del archivo frente al que se muestra. Es lo que explica un logo
   borroso, y no se ve en ninguna otra cifra.
-- **Clases** — la lista tal cual. En una web con utilidades es lo más accionable de todo
-  el panel para quien va a arreglarlo.
+La lista de clases se enseñaba abajo y se ha quitado: en una web de utilidades era un
+párrafo de treinta clases seguidas que no contestaba a ninguna pregunta, y lo que cada una
+hace ya sale computado —en píxeles y en hex— en su sección. El nombre que identifica al
+elemento sigue arriba, en la cabecera del panel.
+
+Las secciones van **separadas entre sí** más de lo que pide el texto. El panel no se lee
+de arriba abajo: se busca un bloque concreto, y el hueco es lo que deja ver dónde acaba
+uno y empieza el siguiente sin tener que leerlos.
 
 Con un elemento seleccionado, **pasar el ratón por otro mide la distancia entre los dos**.
 Si están separados sale la separación de cada eje; si uno está dentro del otro, las cuatro
@@ -155,9 +161,14 @@ lo que no se puede hacer: la pregunta que trae a alguien a medir un hueco es «�
 36?», y un 35,6 disfrazado de 36 contesta que sí a la pregunta equivocada. En un hueco
 limpio el decimal no aparece, así que no añade ruido.
 
+Mientras mides, la cifra vive **dentro del frame**, junto a la línea: es donde estás
+mirando, y un recuadro cambiando al lado de las propiedades del elemento seleccionado —a
+cada movimiento del ratón— era ruido en la única parte del panel que no debería moverse.
+**Al panel sube sólo la medida fijada.**
+
 **`⇧` + clic sobre el segundo elemento fija la medida.** Mientras está fijada el ratón deja
-de mandar —el segundo resalte pasa de trazo discontinuo a continuo, y el panel marca la
-distancia como «fijado»—, así que puedes irte hasta el botón de capturar sin llevártela por
+de mandar —el segundo resalte pasa de trazo discontinuo a continuo, y aparece en el panel
+marcada como «fijado»—, así que puedes irte hasta el botón de capturar sin llevártela por
 delante. Es la única forma de **fotografiar** un espaciado concreto: sin fijar, al salir del
 frame el puntero cruza media página y reasigna la pareja a lo que pisó por el borde. Otro
 `⇧` + clic la mueve a un tercer elemento, `⇧` + clic sobre el propio seleccionado la suelta,
@@ -180,6 +191,29 @@ Un detalle que agradece cualquiera: en flujo normal los márgenes verticales col
 gana el mayor, así que un `margin-bottom: 24px` seguido de un `margin-top: 16px` son 24px
 y no 40. Cuando pasa, lo dice.
 
+### Que el gesto se cuente solo
+
+Un atajo que no está en ningún sitio no existe, así que la app lo cuenta ella, en dos
+tiempos y sin repetirse para siempre.
+
+**La primera selección de tu vida** saca un globo **pegado al cursor**, ahí mismo donde
+acabas de clicar: «Mayúsculas + clic para seleccionar un segundo elemento». Sale una vez y
+nunca más —se recuerda entre sesiones—, se va a los seis segundos o al siguiente clic o
+tecla, lo que pase antes, y no dice para qué sirve a propósito: en cuanto pruebas aparece
+la cota y eso se explica solo mucho mejor que una frase. Va en gris oscuro y no en el azul
+ni en el magenta del inspector, que son los colores con los que se habla de un elemento.
+
+**Después, la misma idea vive en el panel**, en el hueco donde va a salir la medida: una
+línea en gris que aparece con cada elemento que seleccionas y **desaparece para siempre en
+cuanto fijas tu primera distancia**. El disparador de callarse es haberlo usado, no haber
+pasado diez veces ni haber cambiado de sesión: quien ya lo sabe deja de leerlo el mismo día
+y a quien no le ha hecho falta todavía le sigue estando ahí el día que la necesite.
+
+Y va en ese hueco y no en el estado vacío del panel —donde estaba— porque un gesto se
+explica donde se puede hacer y donde va a salir el resultado. En el estado vacío se leía
+antes de tener nada seleccionado, o sea antes de que significara nada, y justo al
+seleccionar —cuando pasaba a significar algo— es cuando se iba de la pantalla.
+
 - Mientras el modo está activo **los clics no llegan a la página**: no navega, no abre
   menús y no se propaga al resto de paneles. Sólo selecciona.
 - **`Esc` va por pasos**: suelta lo fijado, luego la selección y, a la última, sale del
@@ -192,8 +226,7 @@ y no 40. Cuando pasa, lo dice.
   como `a.inline--block.bg-foreground.text-background…` tapando justo lo que querías
   mirar. Por orden de lo que mejor identifica algo a ojos de una persona: el id, una clase
   que sea un nombre y no un ajuste, el texto que lleva dentro si es corto —`a «Start
-  free»` se entiende sin pensar— y si no, la etiqueta sola. La lista completa de clases
-  sigue entera en el panel, que es donde se consulta.
+  free»` se entiende sin pensar— y si no, la etiqueta sola.
 
   Distinguir una clase-nombre de una clase-ajuste no necesita conocer Tailwind: las de
   ajuste tienen forma de ajuste (una variante con `:`, o un prefijo del vocabulario de
@@ -259,7 +292,7 @@ propiedades en la franja, que siguen siendo válidas— y el aviso lo dice.
 hubiera, y la última que hay casi nunca es la que se quería: al salir del frame camino del
 botón, el puntero cruza media página y la reasigna a lo que pisó por el borde, así que la
 imagen salía con una caja magenta y unas cotas que nadie había pedido —en una captura cuyo
-destino es explicarle algo a otra persona—. Si había una distancia en el panel sin fijar, el
+destino es explicarle algo a otra persona—. Si había una medida a medias sin fijar, el
 aviso posterior lo dice en vez de dejar que se descubra al abrir el archivo.
 
 Dentro de la imagen el segundo elemento se dibuja siempre con **trazo continuo**, aunque en

@@ -344,7 +344,7 @@ function inspectBlock (ins) {
         `<span style="color:#e6e8ec;flex:1 1 auto;word-break:break-word">${swatch}${esc(row.v)}</span>` +
         `</div>`
     }).join('')
-    return `<div style="break-inside:avoid;padding-bottom:10px">` +
+    return `<div style="break-inside:avoid;padding-bottom:16px">` +
       `<div style="color:#8a919c;letter-spacing:.06em;padding-bottom:3px">` +
       `${esc(sec.title.toUpperCase())}</div>${rows}</div>`
   }).join('')
@@ -413,7 +413,7 @@ function columnHtml (head, ins) {
     .dist{color:#ff7bff;padding-top:6px}
     .dist .to{color:#8a919c;display:block;font-size:13px;word-break:break-all}
     .dist .why{color:#e6e8ec;display:block;font-size:13px;padding-top:3px;word-break:break-word}
-    .sec{padding-top:16px}
+    .sec{padding-top:24px}
     .t{color:#8a919c;font-size:12px;letter-spacing:.08em;padding-bottom:4px}
     .row{display:flex;gap:10px;align-items:baseline;padding:1px 0}
     .k{color:#5d646e;flex:0 0 104px;font-size:14px}

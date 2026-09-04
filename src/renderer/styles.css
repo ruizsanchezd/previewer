@@ -437,7 +437,7 @@ button:active { background: #ffffff14; }
 /* La distancia va en magenta, como la caja del elemento contra el que se
  * mide. */
 .ins-dist {
-  margin: 6px 10px 2px;
+  margin: 8px 10px 2px;
   padding: 5px 8px;
   border-radius: 5px;
   background: #ff00ff1a;
@@ -468,7 +468,22 @@ button:active { background: #ffffff14; }
   word-break: break-word;
 }
 
-.ins-sec { padding: 8px 10px 2px; }
+/* La pista del gesto de medir, en el hueco donde luego sale la medida. Sin
+ * fondo de color: no es un dato del elemento, es una frase, y compitiendo en
+ * peso con la cabecera azul sería justo el ruido que se quitó de ahí. */
+.ins-tip {
+  margin: 8px 10px 2px;
+  padding: 4px 8px 4px 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-faint);
+}
+.ins-tip b { font-weight: 600; color: var(--text-dim); }
+
+/* Aire entre secciones —color, tipografía, caja, imagen—: el panel se lee a
+ * saltos, buscando un bloque concreto, y el hueco es lo que deja distinguir
+ * dónde acaba uno y empieza el siguiente sin leerlos. */
+.ins-sec { padding: 16px 10px 2px; }
 .ins-sec-title {
   padding: 0 2px 4px;
   font-size: 10px;

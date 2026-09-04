@@ -67,6 +67,18 @@ function saveSets () {
   try { localStorage.setItem('previewer.sets', JSON.stringify(sets)) } catch (_) {}
 }
 
+/* La pista de «⇧ + clic para medir» se enseña hasta que se usa una vez, y eso
+ * sí se recuerda entre sesiones: enseñar un truco es una conversación que se
+ * tiene una vez, no cada vez que se abre la app. */
+let distLearned = false
+let distTipSeen = false
+
+function learnDistance () {
+  if (distLearned) return
+  distLearned = true
+  try { localStorage.setItem('previewer.distLearned', '1') } catch (_) {}
+}
+
 /* Los sets antiguos se guardaban como un array pelado de paneles. */
 function normalizeSet (raw) {
   if (Array.isArray(raw)) return { url: null, panels: raw }
@@ -84,6 +96,8 @@ function restore () {
       state.scrollMode = s.scrollMode || 'ratio'
       state.panels = (s.panels || []).map(hydrate)
     }
+    distLearned = localStorage.getItem('previewer.distLearned') === '1'
+    distTipSeen = localStorage.getItem('previewer.distTip') === '1'
     const rawSets = JSON.parse(localStorage.getItem('previewer.sets') || '{}')
     sets = {}
     for (const [name, raw] of Object.entries(rawSets)) sets[name] = normalizeSet(raw)
@@ -449,6 +463,15 @@ function onGuestMessage (p, channel, data) {
       dropInsLock()
       paintInspector()
       askPlatformFont(p)
+      /* El globo al lado del cursor: una vez en la vida, en la primera
+       * selección, y nunca más. Lo decide el host porque es quien recuerda
+       * —el frame se recarga y olvida—; el frame sólo lo pinta, que es donde
+       * está el ratón. */
+      if (!distTipSeen && !distLearned) {
+        distTipSeen = true
+        try { localStorage.setItem('previewer.distTip', '1') } catch (_) {}
+        p.webview.send('inspect-tip')
+      }
       break
 
     case 'inspect-hover':
@@ -458,6 +481,7 @@ function onGuestMessage (p, channel, data) {
       insState.dist = data.dist
       insState.why = data.why
       insState.locked = !!data.locked
+      if (insState.locked) learnDistance()
       /* Sin nada seleccionado el hover sólo resalta dentro del frame: no hay
        * distancia que contar todavía. */
       if (insState.data) paintDistance()
@@ -812,9 +836,9 @@ function paintInspector () {
   if (!insState.data) {
     const hint = document.createElement('p')
     hint.className = 'ins-hint'
-    hint.textContent = 'Clica un elemento del frame para ver sus propiedades. ' +
-      'Con uno seleccionado, pasa el ratón por otro y te mide la distancia; ' +
-      'con Mayúsculas + clic la fija, para poder capturarla.'
+    /* Lo de medir distancias no se cuenta aquí: se cuenta cuando hay algo
+     * seleccionado, que es cuando se puede hacer y donde va a salir. */
+    hint.textContent = 'Clica un elemento del frame para ver sus propiedades.'
     insBody.appendChild(hint)
     return
   }
@@ -834,6 +858,13 @@ function paintInspector () {
     '<span class="ins-dist-pin"></span></div>' +
     '<span class="ins-dist-to"></span><span class="ins-dist-why"></span>'
   insBody.appendChild(dist)
+
+  /* En el mismo sitio en el que va a salir la medida: la pista enseña el gesto
+   * y de paso enseña dónde mirar cuando lo hagas. */
+  const tip = document.createElement('div')
+  tip.className = 'ins-tip'
+  tip.innerHTML = '<b>Mayúsculas + clic</b> en otro elemento para medir la distancia.'
+  insBody.appendChild(tip)
   paintDistance()
 
   for (const sec of window.PreviewerInspect.sections(insState.data)) {
@@ -867,18 +898,26 @@ async function askPlatformFont (p) {
 function paintDistance () {
   const el = insBody.querySelector('.ins-dist')
   if (!el) return
-  el.hidden = !insState.dist
-  if (!insState.dist) return
+  /* La pista ocupa el hueco de la medida mientras no haya ninguna fijada, y
+   * desaparece para siempre en cuanto se fija la primera. No se esconde al
+   * pasar el ratón por encima de otro elemento: quieta es una pista, y
+   * apareciendo y desapareciendo con el ratón sería otra vez el parpadeo que
+   * se acaba de quitar de aquí. */
+  const tip = insBody.querySelector('.ins-tip')
+  if (tip) tip.hidden = distLearned || insState.locked
+  /* Sólo cuando la medida está fijada. En hover la cifra cambia con cada
+   * movimiento del ratón, y un recuadro que parpadea al lado de las
+   * propiedades del elemento seleccionado es ruido: mientras mides, el número
+   * ya está donde estás mirando, dibujado dentro del frame junto a la línea. */
+  const show = !!(insState.dist && insState.locked)
+  el.hidden = !show
+  if (!show) return
   el.querySelector('.ins-dist-v').textContent = insState.dist
-  /* Que la medida esté fijada tiene que verse: es la diferencia entre un
-   * número que se irá en cuanto muevas el ratón y uno que va a salir en la
-   * captura. */
-  const pin = el.querySelector('.ins-dist-pin')
-  pin.hidden = !insState.locked
-  pin.textContent = 'fijado'
+  /* El rótulo explica de qué es este número: una medida fijada, que ya no
+   * depende del ratón y que va a salir en la captura. */
+  el.querySelector('.ins-dist-pin').textContent = 'fijado'
   el.querySelector('.ins-dist-to').textContent =
-    'hasta ' + (insState.hoverLabel || 'el otro elemento') +
-    (insState.locked ? '' : ' · Mayúsculas + clic para fijarla')
+    'hasta ' + (insState.hoverLabel || 'el otro elemento')
   /* De dónde sale la distancia, cuando se puede saber sin inventar. */
   const why = el.querySelector('.ins-dist-why')
   why.hidden = !insState.why

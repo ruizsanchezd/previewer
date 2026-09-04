@@ -272,7 +272,23 @@ ipcRenderer.on('inspect-source', (_e, source) => {
 
 const ins = {
   on: false, sel: null, hov: null, lock: false,
-  k: 1, x: 0, y: 0, last: 0, tail: null, raw: false
+  k: 1, x: 0, y: 0, last: 0, tail: null, raw: false,
+  /* Dónde se clicó por última vez y si toca enseñar ahí la pista. Quién decide
+   * eso es el host, que es quien recuerda si ya se enseñó; aquí sólo se pinta.
+   * Vive en el estado y no en una variable del momento porque la capa se
+   * repinta entera con cada movimiento del ratón: sin esto, la pista duraría
+   * hasta el píxel siguiente. */
+  px: 0, py: 0, tip: null, tipTail: null
+}
+
+const TIP_MS = 6000
+
+function insTip (show) {
+  if (!show && !ins.tip) return
+  clearTimeout(ins.tipTail)
+  ins.tip = show ? { x: ins.px, y: ins.py } : null
+  if (show) ins.tipTail = setTimeout(() => { insTip(false) }, TIP_MS)
+  insRedraw()
 }
 
 /* Ni una vuelta por requestAnimationFrame, a diferencia del scroll de arriba.
@@ -292,7 +308,9 @@ const ins = {
 const INS_MS = 40
 
 function insReport () {
-  const info = inspect.overlay({ select: ins.sel, hover: ins.hov, k: ins.k, locked: ins.lock })
+  const info = inspect.overlay({
+    select: ins.sel, hover: ins.hov, k: ins.k, locked: ins.lock, tip: ins.tip
+  })
   ipcRenderer.sendToHost('inspect-hover', {
     label: info.label,
     dist: info.dist,
@@ -343,6 +361,8 @@ const insSwallow = (e) => {
    * al ancestro que comparte caja» en pick(), y ese matiz hace falta también
    * al fijar el segundo elemento. */
   if (e.shiftKey && ins.sel) {
+    // Ya lo ha hecho: la pista no tiene nada más que decir.
+    insTip(false)
     // Sobre el propio elemento seleccionado, el gesto suelta el pestillo.
     ins.lock = found !== ins.sel
     ins.hov = ins.lock ? found : ins.sel
@@ -353,6 +373,11 @@ const insSwallow = (e) => {
   ins.sel = found
   ins.hov = found
   ins.lock = false
+  ins.px = e.clientX
+  ins.py = e.clientY
+  /* La pista se va al primer clic siguiente: si estás clicando, o ya lo has
+   * entendido o estás a otra cosa. El host dirá si hay que volver a ponerla. */
+  insTip(false)
   inspect.overlay({ select: ins.sel, hover: null, k: ins.k })
   ipcRenderer.sendToHost('inspect-pick', {
     data: inspect.read(found),
@@ -361,6 +386,7 @@ const insSwallow = (e) => {
 }
 
 const insKey = (e) => {
+  if (ins.tip) insTip(false)
   if (e.key !== 'Escape') return
   e.preventDefault()
   e.stopPropagation()
@@ -374,7 +400,9 @@ const insKey = (e) => {
  * evento lo recoloca. */
 const insRedraw = () => {
   if (!ins.on || !inspect || (!ins.sel && !ins.hov)) return
-  inspect.overlay({ select: ins.sel, hover: ins.hov, k: ins.k, locked: ins.lock })
+  inspect.overlay({
+    select: ins.sel, hover: ins.hov, k: ins.k, locked: ins.lock, tip: ins.tip
+  })
 }
 
 const INS_EVENTS = [
@@ -386,6 +414,12 @@ const INS_EVENTS = [
   ['pointerup', insSwallow],
   ['keydown', insKey]
 ]
+
+/* La pista de la primera vez, que la pide el host tras el primer clic. */
+ipcRenderer.on('inspect-tip', () => {
+  if (!ins.on || !inspect || !ins.sel) return
+  insTip(true)
+})
 
 ipcRenderer.on('inspect', (_e, { on, k, clear }) => {
   /* Sin el módulo no hay modo posible, y quedarse encendido sin responder es
@@ -402,6 +436,7 @@ ipcRenderer.on('inspect', (_e, { on, k, clear }) => {
     ins.sel = null
     ins.hov = null
     ins.lock = false
+    ins.tip = null
   }
 
   if (on && !ins.on) {
@@ -417,9 +452,11 @@ ipcRenderer.on('inspect', (_e, { on, k, clear }) => {
     window.removeEventListener('scroll', insRedraw, true)
     window.removeEventListener('resize', insRedraw)
     clearTimeout(ins.tail)
+    clearTimeout(ins.tipTail)
     ins.sel = null
     ins.hov = null
     ins.lock = false
+    ins.tip = null
     if (inspect) inspect.clear()
     return
   }

@@ -31,6 +31,11 @@
   root.PreviewerInspect = api
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const LAYER_ID = '__previewer_inspect'
+  /* El texto vive aquí y no en el host: lo pinta esta capa, y una cadena que
+   * viaja por IPC para acabar en un innerHTML es una puerta que no hace falta
+   * abrir. Dice lo justo —que hay un segundo elemento— y no lo que eso sirve:
+   * eso se ve solo en cuanto aparece la cota. */
+  const TIP_TEXT = '<b>Mayúsculas</b> + clic para seleccionar un segundo elemento'
   const ACCENT = '#4c8dff'
   const HOVER = '#f0f'
 
@@ -403,14 +408,12 @@
     if (!el || el.nodeType !== 1) return null
     const cs = getComputedStyle(el)
     const r = el.getBoundingClientRect()
-    const classes = (el.getAttribute('class') || '').trim()
     const textual = isTextual(el)
     const flow = layout(el, cs)
 
     const data = {
       label: label(el),
       tag: el.tagName.toLowerCase(),
-      classes: classes.length > 180 ? classes.slice(0, 180) + '…' : classes,
       kind: el.tagName === 'IMG' || el.tagName === 'SVG' ? 'image'
         : textual ? 'text' : 'box',
       box: {
@@ -599,7 +602,10 @@
       })
     }
 
-    if (data.classes) out.push({ title: 'Clases', rows: [{ k: 'class', v: data.classes }] })
+    /* La lista de clases se enseñaba aquí abajo y se ha quitado: en una web de
+     * utilidades era un párrafo de treinta clases seguidas que no contestaba a
+     * ninguna pregunta —el valor que importa ya sale computado en su sección—.
+     * El nombre que identifica al elemento sigue arriba, en `label`. */
     return out
   }
 
@@ -629,6 +635,16 @@
       font-weight: 600; letter-spacing: .01em; }
     #${LAYER_ID} .pi-chip.pi-h { background: ${HOVER}; }
     #${LAYER_ID} .pi-chip.pi-size { background: #111; }
+    /* La pista de la primera vez, al lado del cursor. En gris oscuro y no en
+     * ninguno de los dos colores del inspector: no habla de un elemento, y
+     * pintarla de azul o de magenta la haría pasar por un dato. */
+    #${LAYER_ID} .pi-tip { position: absolute; max-width: calc(240px * var(--pk));
+      padding: calc(6px * var(--pk)) calc(9px * var(--pk));
+      border-radius: calc(6px * var(--pk)); background: #16181c;
+      box-shadow: 0 calc(2px * var(--pk)) calc(14px * var(--pk)) #00000073,
+        inset 0 0 0 1px #ffffff1f;
+      font-size: calc(11.5px * var(--pk)); line-height: 1.4; color: #d7dae0; }
+    #${LAYER_ID} .pi-tip b { color: #fff; font-weight: 600; }
     #${LAYER_ID} .pi-line { position: absolute; background: ${HOVER}; }
     #${LAYER_ID} .pi-guide { position: absolute; background: ${HOVER}66; }
   `
@@ -1028,7 +1044,27 @@
         : ''
       chip(root, hovRect, label(hov) + size, measuring, placed)
     }
+
+    /* Al final del todo: es lo único que va por encima de cualquier otra cosa
+     * de la capa, y quien se aparta si no cabe es el resto. Sólo llega en vivo
+     * —el host la pide una vez en la vida—, así que en una captura no existe. */
+    if (spec.tip) tip(root, spec.tip.x, spec.tip.y, k)
     return info
+  }
+
+  /* Pegada al cursor, como el globo de una herramienta: se lee sin mover los
+   * ojos de donde acabas de clicar. Se cae al otro lado cuando no cabe. */
+  function tip (root, x, y, k) {
+    const el = add(root, 'pi-tip', 'left:0;top:0;visibility:hidden')
+    el.innerHTML = TIP_TEXT
+    const r = el.getBoundingClientRect()
+    const gap = 14 * k
+    let left = x + gap
+    let top = y + gap
+    if (left + r.width > window.innerWidth - 4) left = Math.max(4, x - gap - r.width)
+    if (top + r.height > window.innerHeight - 4) top = Math.max(4, y - gap - r.height)
+    el.setAttribute('style', `left:${left}px;top:${top}px`)
+    return el
   }
 
   function hide () {
