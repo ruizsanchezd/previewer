@@ -256,4 +256,56 @@ async function stackVertical (slices, file, density = 1) {
   return { width, height }
 }
 
-module.exports = { readHeader, decodeRgba, stackVertical, PngWriter }
+/* Pone dos PNG uno al lado del otro, alineados arriba, y rellena con `fill`
+ * lo que le falte al más corto.
+ *
+ * Rompe la regla de la cabecera —aquí sí hay dos imágenes enteras
+ * descomprimidas a la vez— y se puede permitir porque sólo se usa para pegar
+ * la columna de datos a una captura de viewport, que está acotada por el
+ * tamaño del dispositivo: un 1280×800 a @2x son 16MB, muy por debajo del
+ * presupuesto de un tramo. No lo uses para una página entera. */
+async function joinSide (leftPng, rightPng, file, density = 1, fill = [0, 0, 0, 255]) {
+  const left = decodeRgba(leftPng)
+  const right = decodeRgba(rightPng)
+  const width = left.width + right.width
+  const height = Math.max(left.height, right.height)
+
+  const writer = new PngWriter(file, width, height, density)
+  try {
+    const stride = width * 4
+    // Por tandas, no fila a fila: el escritor ya agrupa las suyas y llamarlo
+    // una vez por fila le haría reservar un buffer por cada una.
+    const rows = Math.max(1, Math.min(height, Math.floor(4e6 / stride)))
+    const batch = Buffer.allocUnsafe(rows * stride)
+    for (let y = 0; y < height; y += rows) {
+      const n = Math.min(rows, height - y)
+      for (let i = 0; i < n; i++) {
+        copyRow(batch, i * stride, left, y + i, fill)
+        copyRow(batch, i * stride + left.width * 4, right, y + i, fill)
+      }
+      await writer.write(batch, n)
+    }
+    await writer.finish()
+  } catch (err) {
+    writer.destroy()
+    try { fs.unlinkSync(file) } catch (_) {}
+    throw err
+  }
+  return { width, height }
+}
+
+function copyRow (out, at, img, y, fill) {
+  const stride = img.width * 4
+  if (y < img.height) {
+    img.data.copy(out, at, y * stride, (y + 1) * stride)
+    return
+  }
+  for (let i = 0; i < stride; i += 4) {
+    out[at + i] = fill[0]
+    out[at + i + 1] = fill[1]
+    out[at + i + 2] = fill[2]
+    out[at + i + 3] = fill[3]
+  }
+}
+
+module.exports = { readHeader, decodeRgba, stackVertical, joinSide, PngWriter }

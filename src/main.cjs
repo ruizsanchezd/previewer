@@ -259,7 +259,8 @@ function bannerScript (head) {
       `<span style="font:13px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;color:#5d646e;flex:0 0 auto">${esc(head.when)}</span>` +
     `</div>` +
     `<div style="font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:#4c8dff;${line}">${esc(head.url)}</div>` +
-    `<div style="font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#8a919c;${line}">${esc(head.meta)}</div>`
+    `<div style="font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#8a919c;${line}">${esc(head.meta)}</div>` +
+    (head.inspect ? inspectBlock(head.inspect) : '')
 
   return `(() => {
     const old = document.getElementById('__previewer_banner')
@@ -290,6 +291,200 @@ function bannerScript (head) {
     document.body.insertBefore(el, document.body.firstChild)
     return Math.ceil(el.getBoundingClientRect().height)
   })()`
+}
+
+/* Inspect mode in a capture.
+ *
+ * The shot runs on a page that was loaded a moment ago and knows nothing
+ * about what was selected on screen, so the whole of inspect.js is injected
+ * and asked to redraw the overlay from the selector paths the renderer sent.
+ * Same file, same code, same drawing as the live frame — see the notes at the
+ * top of it.
+ *
+ * It can legitimately come up empty: a page that renders itself differently on
+ * every load may not have that element at that path any more. Then the shot is
+ * taken without the highlight and the toast says so, which beats losing it. */
+const INSPECT_SOURCE = fs.readFileSync(path.join(__dirname, 'inspect.js'), 'utf8')
+
+async function drawInspect (wc, ins) {
+  /* `locked: true` siempre, aunque en vivo la pareja no estuviera fijada: el
+   * trazo discontinuo del segundo elemento significa «aquí está el ratón», y
+   * en una imagen no hay ratón. Lo que hay es una medida, y se dibuja como
+   * tal. */
+  const spec = JSON.stringify({
+    select: ins.path, hover: ins.hoverPath || null, k: 1, locked: true
+  })
+  try {
+    return !!await wc.executeJavaScript(
+      INSPECT_SOURCE + ';(PreviewerInspect.overlay(' + spec + ') || {}).ok')
+  } catch (_) {
+    return false
+  }
+}
+
+/* The strip is inserted at the top of the body, which shifts the page under a
+ * fixed overlay: the highlight would land on top of the strip and end up in
+ * the middle of it. It has already been photographed by this point. */
+const HIDE_INSPECT = `(() => {
+  try { PreviewerInspect.hide() } catch (_) {}
+  return 1
+})()`
+
+/* The values, laid out as columns so a phone-width strip stays readable. The
+ * same sections the floating panel shows, computed once in the renderer. */
+function inspectBlock (ins) {
+  const cols = (ins.sections || []).map((sec) => {
+    const rows = sec.rows.map((row) => {
+      const swatch = row.swatch
+        ? `<span style="display:inline-block;width:11px;height:11px;border-radius:2px;` +
+          `background:${esc(row.swatch)};box-shadow:inset 0 0 0 1px #ffffff66;margin-right:6px"></span>`
+        : ''
+      return `<div style="display:flex;gap:8px;align-items:baseline;padding:1px 0">` +
+        `<span style="color:#5d646e;flex:0 0 96px">${esc(row.k)}</span>` +
+        `<span style="color:#e6e8ec;flex:1 1 auto;word-break:break-word">${swatch}${esc(row.v)}</span>` +
+        `</div>`
+    }).join('')
+    return `<div style="break-inside:avoid;padding-bottom:10px">` +
+      `<div style="color:#8a919c;letter-spacing:.06em;padding-bottom:3px">` +
+      `${esc(sec.title.toUpperCase())}</div>${rows}</div>`
+  }).join('')
+
+  const dist = ins.dist
+    ? `<div style="color:#ff7bff;padding-top:2px">${esc(ins.dist)} ` +
+      `<span style="color:#8a919c">hasta ${esc(ins.hoverLabel || 'el otro elemento')}</span></div>`
+    : ''
+
+  return `<div style="margin-top:14px;padding-top:12px;border-top:1px solid #24282e;` +
+      `font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace">` +
+      `<div style="color:#4c8dff;font-weight:600;padding-bottom:2px">${esc(ins.label)}</div>` +
+      dist +
+      `<div style="column-width:250px;column-gap:24px;margin-top:8px">${cols}</div>` +
+    `</div>`
+}
+
+/* La columna de datos de una captura en modo inspección.
+ *
+ * Se dibuja en su propia ventana, a la misma densidad que la página, y se pega
+ * al lado derecho de la imagen (ver png.joinSide). Antes esto era una franja a
+ * lo ancho encima de la captura, y en cuanto un elemento traía diez filas de
+ * propiedades la franja medía casi tanto como el viewport que estaba
+ * describiendo: en columna el texto se apila donde hay sitio de sobra —a lo
+ * alto— y se lee de arriba abajo de una pasada.
+ *
+ * Lleva dentro la cabecera (dispositivo, URL, fecha), así que en este modo la
+ * franja de arriba no se dibuja: sería la misma información dos veces. */
+const COLUMN_CSS_WIDTH = 380
+
+function columnHtml (head, ins) {
+  const mono = 'ui-monospace,SFMono-Regular,Menlo,monospace'
+  const sans = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+
+  const sections = (ins.sections || []).map((sec) => {
+    const rows = sec.rows.map((row) => {
+      const swatch = row.swatch
+        ? `<span class="sw" style="background:${esc(row.swatch)}"></span>`
+        : ''
+      const tag = row.tag
+        ? `<span class="tag${row.bad ? ' bad' : ''}">${esc(row.tag)}</span>`
+        : ''
+      return `<div class="row"><span class="k">${esc(row.k)}</span>` +
+        `<span class="v">${swatch}${esc(row.v)}${tag}</span></div>`
+    }).join('')
+    return `<div class="sec"><div class="t">${esc(sec.title.toUpperCase())}</div>${rows}</div>`
+  }).join('')
+
+  const dist = ins.dist
+    ? `<div class="dist">${esc(ins.dist)}` +
+      `<span class="to">hasta ${esc(ins.hoverLabel || 'el otro elemento')}</span>` +
+      (ins.why ? `<span class="why">${esc(ins.why)}</span>` : '') +
+      `</div>`
+    : ''
+
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{width:${COLUMN_CSS_WIDTH}px;background:#0b0c0e;color:#e6e8ec;
+      padding:20px 20px 26px;font:15px/1.5 ${mono};-webkit-font-smoothing:antialiased}
+    .name{font:600 20px/1.3 ${sans};color:#fff;word-break:break-word}
+    .size{font:14px/1.4 ${mono};color:#8a919c;padding-top:2px}
+    .url{font:13px/1.5 ${mono};color:#4c8dff;padding-top:8px;word-break:break-all}
+    .meta{font:12px/1.5 ${mono};color:#5d646e;padding-top:4px}
+    hr{border:0;border-top:1px solid #24282e;margin:16px 0}
+    .sel{color:#4c8dff;font-weight:600;word-break:break-all}
+    .dist{color:#ff7bff;padding-top:6px}
+    .dist .to{color:#8a919c;display:block;font-size:13px;word-break:break-all}
+    .dist .why{color:#e6e8ec;display:block;font-size:13px;padding-top:3px;word-break:break-word}
+    .sec{padding-top:16px}
+    .t{color:#8a919c;font-size:12px;letter-spacing:.08em;padding-bottom:4px}
+    .row{display:flex;gap:10px;align-items:baseline;padding:1px 0}
+    .k{color:#5d646e;flex:0 0 104px;font-size:14px}
+    .v{color:#e6e8ec;flex:1 1 auto;min-width:0;font-size:14px;word-break:break-word}
+    .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;
+      box-shadow:inset 0 0 0 1px #ffffff66;vertical-align:baseline}
+    .tag{margin-left:6px;padding:1px 5px;border-radius:3px;background:#ffffff1f;
+      color:#8a919c;font-size:12px}
+    .tag.bad{background:#ff5f5633;color:#ff8f88}
+  </style></head><body>
+    <div class="name">${esc(head.name)}</div>
+    <div class="size">${esc(head.size)}</div>
+    <div class="url">${esc(head.url)}</div>
+    <div class="meta">${esc(head.meta)}</div>
+    <div class="meta">${esc(head.when)}</div>
+    <hr>
+    <div class="sel">${esc(ins.label)}</div>
+    ${dist}
+    ${sections}
+  </body></html>`
+}
+
+/* Devuelve el PNG de la columna, o null: una captura sin columna sigue siendo
+ * una captura útil, y con el resalte ya dibujado encima. */
+function metaLine (spec, info, pageHeight, landed, density) {
+  return [
+    spec.mode === 'viewport'
+      ? `viewport en scroll ${landed}px`
+      : `página ${info.width}×${pageHeight}`,
+    `@${density}x`
+  ].concat((spec.header && spec.header.variants) || []).join('  ·  ')
+}
+
+async function shootColumn (head, ins, cssHeight, density) {
+  const win = new BrowserWindow({
+    show: false,
+    useContentSize: true,
+    width: COLUMN_CSS_WIDTH,
+    height: Math.max(200, Math.round(cssHeight)),
+    webPreferences: { offscreen: true, contextIsolation: true, nodeIntegration: false }
+  })
+  const wc = win.webContents
+  let attached = false
+  try {
+    await wc.loadURL('data:text/html;charset=utf-8,' +
+      encodeURIComponent(columnHtml(head, ins)))
+    attach(wc)
+    attached = true
+    await wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride', {
+      width: COLUMN_CSS_WIDTH, height: Math.max(200, Math.round(cssHeight)),
+      deviceScaleFactor: density, mobile: false
+    })
+    await pause(150)
+    const content = Number(await wc.executeJavaScript(
+      'Math.ceil(document.body.getBoundingClientRect().height)')) || 0
+    // Si los datos no caben en el alto del viewport, la imagen crece y
+    // joinSide rellena el lado de la página; al revés, sobra fondo y ya está.
+    return await shootClip(wc, {
+      y: 0,
+      width: COLUMN_CSS_WIDTH,
+      height: Math.max(Math.round(cssHeight), content)
+    })
+  } catch (_) {
+    return null
+  } finally {
+    if (attached) {
+      try { await wc.debugger.sendCommand('Emulation.clearDeviceMetricsOverride') } catch (_) {}
+      try { wc.debugger.detach() } catch (_) {}
+    }
+    if (!win.isDestroyed()) win.destroy()
+  }
 }
 
 const REMOVE_BANNER = `(() => {
@@ -457,6 +652,11 @@ async function capturePanel (spec) {
     }
     await settle(wc, info.width, Math.min(info.viewport, pageHeight))
 
+    let inspected = null
+    if (spec.inspect && spec.inspect.path && mode === 'viewport') {
+      inspected = await drawInspect(wc, spec.inspect)
+    }
+
     /* The page is captured first and the strip second, so the strip can be cut
      * to the width the page actually came out at — a clip is measured in layout
      * CSS pixels, and with page zoom or a horizontally overflowing page that is
@@ -507,16 +707,24 @@ async function capturePanel (spec) {
     let ceiling = null
     try { ceiling = await wc.executeJavaScript(ASSET_CEILING(density)) } catch (_) {}
 
+    /* La columna se dibuja aparte y con los datos que vinieron en el spec, así
+     * que no toca la página ni depende de que el resalte se haya encontrado. */
+    let column = null
+    if (spec.inspect && spec.inspect.path && mode === 'viewport' && spec.header) {
+      column = await shootColumn(
+        Object.assign({}, spec.header, { meta: metaLine(spec, info, pageHeight, landed, density) }),
+        spec.inspect,
+        Math.max(1, Math.min(pageHeight, info.viewport)),
+        density)
+    }
+
     const slices = []
-    if (spec.header) {
+    if (spec.header && !column) {
       try {
+        await wc.executeJavaScript(HIDE_INSPECT)
         const bannerCss = Number(await wc.executeJavaScript(bannerScript(Object.assign({}, spec.header, {
-          meta: [
-            mode === 'viewport'
-              ? `viewport en scroll ${landed}px`
-              : `página ${info.width}×${pageHeight}`,
-            `@${density}x`
-          ].concat(spec.header.variants || []).join('  ·  ')
+          inspect: spec.inspect && spec.inspect.path ? spec.inspect : null,
+          meta: metaLine(spec, info, pageHeight, landed, density)
         })))) || 0
         const pageWidth = png.readHeader(page[0]).width
         if (bannerCss > 0) {
@@ -534,13 +742,21 @@ async function capturePanel (spec) {
     }
     slices.push(...page)
 
-    const file = await save(fileName, slices, density)
+    const file = column
+      // #0b0c0e es el fondo de la columna: si la página es más corta que los
+      // datos, lo que se rellena por debajo se lee como la columna siguiendo.
+      ? await save(fileName, density,
+          (out) => png.joinSide(page[0], column, out, density, [0x0b, 0x0c, 0x0e, 0xff]))
+      : await save(fileName, density, (out) => png.stackVertical(slices, out, density))
+
     return Object.assign({
       ok: true,
       mode: mode === 'viewport' ? 'viewport' : 'full',
       density,
       slices: page.length,
       scrolledTo: landed,
+      inspected,
+      column: !!column,
       ceiling,
       truncated: mode === 'viewport' ? false : truncated
     }, file)
@@ -602,13 +818,16 @@ function toJpeg (from, to) {
   })
 }
 
-async function save (fileName, slices, density) {
+/* `compose` recibe la ruta del PNG intermedio y devuelve su tamaño: apilar los
+ * tramos en vertical, o pegar la columna de datos al lado. El resto —carpeta,
+ * nombre, conversión a JPEG— es igual en los dos casos. */
+async function save (fileName, density, compose) {
   const dir = path.join(app.getPath('downloads'), 'previewer')
   fs.mkdirSync(dir, { recursive: true })
   const base = path.join(dir, (fileName || 'previewer').replace(/\.(png|jpe?g)$/i, ''))
 
   const stitched = base + '.png'
-  const size = await png.stackVertical(slices, stitched, density)
+  const size = await compose(stitched)
 
   let file = stitched
   const jpeg = base + '.jpg'
@@ -636,6 +855,73 @@ ipcMain.handle('capture-panel', async (_e, spec) => {
     ])
   } finally {
     if (timer) clearTimeout(timer)
+  }
+})
+
+/* The guest cannot read it off disk from inside its sandbox, so it asks for
+ * it through the host. Read once, at startup. */
+ipcMain.handle('inspect-source', () => INSPECT_SOURCE)
+
+/* Which typeface is actually painting an element's text.
+ *
+ * `font-family` computes to the stack the page asked for, and on any page
+ * built on a modern reset the first entry is a keyword — `ui-sans-serif`,
+ * `-apple-system`, `system-ui` — so reporting "the first family that exists"
+ * answered with the keyword and not with a typeface. All three mean San
+ * Francisco on a Mac, which is the thing anyone actually wants to know.
+ *
+ * The DOM cannot tell you: there is no API for the font that won. The DevTools
+ * protocol can — it is where the "Rendered Fonts" list in the Computed panel
+ * comes from — and we already have a debugger session on every guest for the
+ * media emulation.
+ *
+ * Only on a click, never on hover, and a failure is not worth a word to the
+ * user: the CSS value is still shown, it just is not as useful. */
+/* Chromium devuelve el nombre interno de la cara del sistema —«SF NS»,
+ * «.AppleSystemUIFont», «.SFNSDisplay»—, que no es como la llama nadie. */
+const APPLE_SYSTEM =
+  /^\.?(AppleSystemUIFont|SF ?NS|SF ?UI|SF ?Pro|Helvetica ?Neue ?DeskInterface|Lucida ?Grande)/i
+
+function prettyFont (name) {
+  if (!name) return null
+  if (APPLE_SYSTEM.test(name)) return 'San Francisco'
+  // .SFNS-Regular_wdth_opsz… y demás nombres internos con sufijos.
+  return name.replace(/^\./, '').split('_')[0]
+}
+
+ipcMain.handle('platform-font', async (_e, { id, selector }) => {
+  const wc = webContents.fromId(id)
+  if (!wc || wc.isDestroyed() || !selector) return null
+  let enabled = false
+  try {
+    attach(wc)
+    await wc.debugger.sendCommand('DOM.enable')
+    await wc.debugger.sendCommand('CSS.enable')
+    enabled = true
+    const { root } = await wc.debugger.sendCommand('DOM.getDocument', { depth: 0 })
+    const found = await wc.debugger.sendCommand('DOM.querySelector', {
+      nodeId: root.nodeId, selector
+    })
+    if (!found || !found.nodeId) return null
+    const { fonts } = await wc.debugger.sendCommand('CSS.getPlatformFontsForNode', {
+      nodeId: found.nodeId
+    })
+    // La que ha pintado más glifos, sin contar la de emoji, que aparece en
+    // cuanto el texto lleva un solo símbolo.
+    const best = (fonts || [])
+      .filter((f) => f.familyName && !/emoji/i.test(f.familyName))
+      .sort((a, b) => (b.glyphCount || 0) - (a.glyphCount || 0))[0]
+    return best ? prettyFont(best.familyName) : null
+  } catch (_) {
+    return null
+  } finally {
+    /* Los dominios del protocolo son por sesión, así que apagarlos no molesta
+     * a unas DevTools abiertas, y dejar CSS encendido le cuesta a la página
+     * seguir la pista de sus hojas de estilo para nada. */
+    if (enabled) {
+      try { await wc.debugger.sendCommand('CSS.disable') } catch (_) {}
+      try { await wc.debugger.sendCommand('DOM.disable') } catch (_) {}
+    }
   }
 })
 

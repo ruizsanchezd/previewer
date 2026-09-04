@@ -51,6 +51,16 @@
     </div>
   </main>
 
+  <div id="inspector" hidden>
+    <div class="ins-bar">
+      <span class="ins-title">Inspección</span>
+      <span class="ins-frame" id="ins-frame"></span>
+      <button id="ins-shot" class="pill" title="Captura del viewport con la selección dibujada">Capturar</button>
+      <button id="ins-close" class="icon" title="Salir del modo inspección (Esc)">✕</button>
+    </div>
+    <div id="ins-body"></div>
+  </div>
+
   <div id="marquee" hidden></div>
   <div id="shield" hidden></div>
   <div id="pan-overlay" hidden></div>
@@ -71,6 +81,7 @@
     <span><kbd>clic derecho</kbd> menú</span>
   </footer>
 
+  <script src="../inspect.js"></script>
   <script src="devices.js"></script>
   <script src="renderer.js"></script>
 </body>

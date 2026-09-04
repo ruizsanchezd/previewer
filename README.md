@@ -35,10 +35,14 @@ con cualquier URL: no dependemos de iframes ni de que la web permita ser embebid
 
 - `src/main.cjs` — proceso principal; ventana, emulación (esquema de color, idioma) vía CDP
   y las capturas.
-- `src/png.cjs` — lector/escritor PNG mínimo; une los tramos de una captura en streaming
-  (el PNG resultante es el paso intermedio hacia el JPEG final).
+- `src/png.cjs` — lector/escritor PNG mínimo; une los tramos de una captura en streaming,
+  en vertical o pegando la columna de datos a la derecha (el PNG resultante es el paso
+  intermedio hacia el JPEG final).
 - `src/preload.cjs` — puente seguro entre el renderer y el proceso principal.
 - `src/guest/guest.cjs` — script inyectado en cada página previsualizada.
+- `src/inspect.js` — modo inspección: lee las propiedades de un elemento y dibuja el
+  resalte y las cotas. Es el único archivo que corre en tres sitios a la vez (el frame
+  vivo, la captura y el renderer), y el porqué está explicado en su cabecera.
 - `src/renderer/` — el lienzo: paneles, pan/zoom, barra de herramientas, menús.
 
 ## Atajos y gestos
@@ -49,7 +53,9 @@ con cualquier URL: no dependemos de iframes ni de que la web permita ser embebid
 | `⌘` + rueda | Zoom del lienzo |
 | `espacio` + arrastrar (o botón central) | Mover el lienzo |
 | Arrastrar sobre el fondo | Recuadro de selección; `⇧` suma a la selección |
-| `Esc` | Deseleccionar |
+| `Esc` | Deseleccionar (en modo inspección: suelta lo fijado, luego la selección, luego sale) |
+| `Alt` señalando, en modo inspección | El elemento exacto bajo el cursor, sin heurística |
+| `⇧` + clic, en modo inspección | Fija el elemento contra el que se mide, para poder capturar la distancia |
 | Arrastrar el título de un panel | Mover ese panel, o toda la selección si está dentro |
 | Arrastrar la esquina inferior derecha | Redimensionar el panel |
 | `⌘R` | Recargar todos los paneles |
@@ -76,12 +82,135 @@ banner de consentimiento, onboarding, logout, flags guardados).
 ## Por panel (menú `⋯`)
 
 Esquema de color (auto/claro/oscuro), idioma, zoom de página, movimiento reducido,
-duplicar, DevTools, recargar, quitar y **screenshot**. Lo que no está en `auto` aparece
-como etiqueta en el título del panel.
+duplicar, **inspeccionar elementos**, DevTools, recargar, quitar y **screenshot**. Lo que
+no está en `auto` aparece como etiqueta en el título del panel.
 
 El título del panel se encoge con el zoom: por debajo de 210px de ancho en pantalla
 suelta las medidas, y por debajo de 108px deja sólo el `⋯`, que lleva todas las
 acciones. Así los títulos nunca se solapan entre paneles.
+
+## Inspeccionar elementos
+
+La retícula del título de cada panel enciende el **modo inspección** en ese panel, a lo
+CSS Peeper: pasas el ratón por encima y se resalta el elemento con su selector; clicas y
+un panel flotante te da sus propiedades ya calculadas. Cada valor es un botón: al pulsarlo
+se copia.
+
+Lo que sale, y por qué eso y no la lista entera de propiedades computadas:
+
+- **Caja** — tamaño, padding, margin, gap y radio, y en un contenedor de flex o grid
+  también **cómo reparte el sitio**: dirección, `justify`/`align`, y los anchos reales de
+  las columnas de un grid (el computado son píxeles, no el `1fr` que se escribió, que es
+  justo lo que hace falta para comprobar si una columna mide lo que debía). Si el elemento
+  es *hijo* de un flex o un grid, su `flex`, que es lo que explica por qué mide lo que
+  mide. Todo eso sólo cuando no es el valor por defecto: `display: block`, `position:
+  static`, `flex-direction: row` y compañía se callan, porque una fila que casi nunca
+  informa es una fila que se aprende a saltar. El `z-index` aparece sólo si el elemento
+  está posicionado, que es cuando hace algo.
+- **Tipografía** — la **fuente que está pintando de verdad**, y como etiqueta la que
+  pide el CSS: «Helvetica `-apple-system`» se lee como «pediste eso y te han dado esto».
+  Las dos cosas hacen falta y no son la misma pregunta.
+
+  Hace falta preguntárselo al navegador —hay un comando del protocolo de DevTools que
+  dice qué fuente de sistema ha usado para los glifos de un nodo— porque el CSS computado
+  no lo sabe, y lo que dice engaña: **Chrome ignora `-apple-system` y `ui-sans-serif`**,
+  que son palabras de Safari y de la especificación que no implementa, y se cae al
+  siguiente de la pila. Un `system-ui` o un `BlinkMacSystemFont` sí le valen y dan San
+  Francisco; sin ellos, lo que sale es Helvetica pelada. Enseñar la primera palabra de la
+  pila era enseñar precisamente la que el navegador no mira.
+
+  De paso sale gratis el caso que más importa: si pides `JetBrains Mono` y la columna
+  dice «Menlo `JetBrains Mono`», la fuente no está cargando.
+
+  El interlineado va en px y en ratio, que es como lo piensa cada uno de los dos lados.
+- **Color** — texto, fondo (y si el elemento es transparente, el que hay detrás, marcado
+  como heredado), borde, sombra y el **contraste WCAG** del texto contra su fondo, con su
+  nivel AA/AAA. Es el número que convierte «este gris se ve raro» en «este gris incumple»,
+  y sale gratis porque los dos colores ya están ahí.
+
+  El borde se lee **lado a lado**, no sólo el de arriba: un separador, una pestaña activa
+  o un input subrayado no tienen más que `border-bottom`, y antes salían como si no
+  tuvieran borde ninguno. Si los cuatro lados coinciden se resume en uno.
+
+  El contraste no se calcula cuando no se puede saber de verdad: sobre un degradado, una
+  imagen o un texto semitransparente, el color real depende del píxel y cualquier cifra
+  sería inventada. Sí se calcula cuando **nadie pinta un fondo** y el que se ve es el
+  blanco del navegador —el caso de cualquier prototipo que no se molesta en poner un
+  `background` en el `body`, donde antes el panel se callaba justo cuando más fácil era
+  contestar—. En modo oscuro sin fondo declarado se calla: el color del lienzo lo elige
+  Chromium, no está en ninguna propiedad, y un contraste sacado de un color adivinado es
+  peor que ningún contraste.
+- **Imagen** — el tamaño del archivo frente al que se muestra. Es lo que explica un logo
+  borroso, y no se ve en ninguna otra cifra.
+- **Clases** — la lista tal cual. En una web con utilidades es lo más accionable de todo
+  el panel para quien va a arreglarlo.
+
+Con un elemento seleccionado, **pasar el ratón por otro mide la distancia entre los dos**.
+Si están separados sale la separación de cada eje; si uno está dentro del otro, las cuatro
+distancias a sus bordes. Es la manera corta de explicarle a alguien que ese botón está a
+32px cuando debería estar a 24.
+
+Las cotas van **con su decimal cuando lo hay**. Redondear al entero es tentador y es justo
+lo que no se puede hacer: la pregunta que trae a alguien a medir un hueco es «¿son 32 o son
+36?», y un 35,6 disfrazado de 36 contesta que sí a la pregunta equivocada. En un hueco
+limpio el decimal no aparece, así que no añade ruido.
+
+**`⇧` + clic sobre el segundo elemento fija la medida.** Mientras está fijada el ratón deja
+de mandar —el segundo resalte pasa de trazo discontinuo a continuo, y el panel marca la
+distancia como «fijado»—, así que puedes irte hasta el botón de capturar sin llevártela por
+delante. Es la única forma de **fotografiar** un espaciado concreto: sin fijar, al salir del
+frame el puntero cruza media página y reasigna la pareja a lo que pisó por el borde. Otro
+`⇧` + clic la mueve a un tercer elemento, `⇧` + clic sobre el propio seleccionado la suelta,
+y `Esc` también.
+
+El segundo elemento no aparece en el panel a propósito: es una referencia, no lo que estás
+inspeccionando. Lo único que lleva es **su tamaño en la etiqueta**, porque en una captura
+no queda constancia de él en ningún otro sitio y es la pregunta que sigue a «están a 36px».
+
+Y cuando se puede saber, **dice de dónde sale esa distancia**: `column-gap: 32px de
+div.row`, `margin-top: 48px de h2`, `padding-left: 24px de section.hero`. El número dice
+cuánto y no dice por qué, y el minuto que de verdad cuesta arreglarlo es encontrar la
+propiedad que hay que tocar. Mira las tres cosas que la explican casi siempre —el `gap`
+del contenedor cuando son hermanos, un margen de uno de los dos, el `padding` del de
+fuera cuando uno está dentro— y **sólo lo dice si las cuentas cuadran al píxel**: si el
+hueco no lo explica ninguna, se calla, porque una atribución equivocada manda a alguien a
+cambiar la línea que no era y eso es peor que no decir nada.
+
+Un detalle que agradece cualquiera: en flujo normal los márgenes verticales colapsan y
+gana el mayor, así que un `margin-bottom: 24px` seguido de un `margin-top: 16px` son 24px
+y no 40. Cuando pasa, lo dice.
+
+- Mientras el modo está activo **los clics no llegan a la página**: no navega, no abre
+  menús y no se propaga al resto de paneles. Sólo selecciona.
+- **`Esc` va por pasos**: suelta lo fijado, luego la selección y, a la última, sale del
+  modo. Funciona igual con el foco dentro del frame o en el lienzo.
+- **`Alt` mientras señalas** salta la heurística y te da el elemento exacto bajo el
+  cursor. Por defecto se sube al elemento que *ves*: si un framework envuelve el texto de
+  un botón en tres capas invisibles, lo que quieres es el botón, no el `<span>` de dentro.
+- **La etiqueta del resalte identifica, no describe.** Con el ratón encima ya estás viendo
+  el elemento, así que sobra enumerarle las clases: en una web de utilidades salían cosas
+  como `a.inline--block.bg-foreground.text-background…` tapando justo lo que querías
+  mirar. Por orden de lo que mejor identifica algo a ojos de una persona: el id, una clase
+  que sea un nombre y no un ajuste, el texto que lleva dentro si es corto —`a «Start
+  free»` se entiende sin pensar— y si no, la etiqueta sola. La lista completa de clases
+  sigue entera en el panel, que es donde se consulta.
+
+  Distinguir una clase-nombre de una clase-ajuste no necesita conocer Tailwind: las de
+  ajuste tienen forma de ajuste (una variante con `:`, o un prefijo del vocabulario de
+  siempre —`bg-`, `text-`, `mt-`, `items-`…—). Se equivoca hacia el lado bueno: si
+  descarta una clase que sí era un nombre, la etiqueta cae en el texto o en el tag, que
+  siguen identificando; al revés, lo que sale es el ruido que veníamos a quitar.
+- **Las etiquetas se apartan entre ellas**, y quien se aparta es la etiqueta, nunca la
+  cifra de una cota: una medida tiene que estar sobre su línea para significar algo,
+  mientras que el nombre de un elemento se lee igual un poco más arriba o más abajo. Con
+  dos elementos a 20px, si no, las tres cosas caían en la misma banda.
+- Un panel a la vez, y no se guarda al cerrar la app: es una herramienta de un rato, y
+  arrancar con un frame que no responde a los clics sería un misterio.
+- El resalte **no tiñe** el elemento seleccionado, sólo lo bordea: un velo de color encima
+  falsearía justo el color que la captura va a demostrar.
+
+Lo único que se inyecta en la página es una capa de `<div>`s que se borra al salir; las
+propiedades son valores computados, así que no hay que interpretar el CSS de nadie.
 
 ## Screenshot
 
@@ -97,6 +226,45 @@ más abajo.
 
 Arriba llevan una franja con el dispositivo, el viewport, la URL, el tamaño real de la
 página (o el offset de scroll), la densidad, las variantes activas y la fecha.
+
+### Capturar en modo inspección
+
+El botón **Capturar** del panel de inspección guarda el viewport con el resalte, las cotas
+y la distancia fijada dibujados, y **una columna de datos pegada a la derecha** con
+la cabecera y las propiedades del elemento. Es una imagen que se explica sola: se la pasas
+a desarrollo y ya está.
+
+La columna va al lado y no en la franja de arriba porque los datos son altos y estrechos.
+En franja, un elemento con diez propiedades ocupaba casi tanto como el viewport que estaba
+describiendo; en columna el texto se apila donde hay sitio de sobra —a lo alto— y se lee de
+arriba abajo de una pasada. En este modo la franja de arriba no se dibuja: la cabecera va
+dentro de la columna y sería la misma información dos veces.
+
+Si los datos son más altos que la página, la imagen crece y el hueco bajo la página se
+rellena con el fondo de la columna.
+
+Sólo viewport, nunca página entera: acotar un elemento en una imagen de 8000px de alto no
+le sirve a nadie.
+
+La captura corre en su propia ventana, sobre una copia recién cargada de la página, así
+que no sabe nada de lo que seleccionaste: se le pasan las rutas de los elementos y
+**vuelve a dibujar el overlay con el mismo código** que el frame vivo. Eso es lo que hace
+que salga a `@2x` y nítida en vez de a la resolución a la que tengas el lienzo.
+
+El precio es que en una web que se dibuja distinta en cada carga el elemento puede no
+estar en el mismo sitio. Si no lo encuentra, la captura sale sin el resalte —con las
+propiedades en la franja, que siguen siendo válidas— y el aviso lo dice.
+
+**A la imagen sólo va la distancia fijada** con `⇧` + clic. Antes iba la última que
+hubiera, y la última que hay casi nunca es la que se quería: al salir del frame camino del
+botón, el puntero cruza media página y la reasigna a lo que pisó por el borde, así que la
+imagen salía con una caja magenta y unas cotas que nadie había pedido —en una captura cuyo
+destino es explicarle algo a otra persona—. Si había una distancia en el panel sin fijar, el
+aviso posterior lo dice en vez de dejar que se descubra al abrir el archivo.
+
+Dentro de la imagen el segundo elemento se dibuja siempre con **trazo continuo**, aunque en
+vivo estuviera en discontinuo: el discontinuo significa «aquí está el ratón», y en una
+imagen no hay ratón. Lo que hay es una medida.
 
 Las capturas se hacen en una **ventana offscreen aparte**, del tamaño exacto del
 dispositivo, nunca desde el `<webview>` visible: capturar un guest no es fiable en

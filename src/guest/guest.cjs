@@ -145,6 +145,10 @@ ipcRenderer.on('scroll', (_e, { mode, ratio, y }) => {
 
 /* ----------------------------------------------------------- input -- */
 
+/* Positional, so it survives a reload and does not depend on class names a
+ * framework may hash differently. Inspect mode and the capture both address
+ * elements by these paths: the capture has to find the same element again in
+ * a freshly loaded copy of the page. */
 function selectorFor (el) {
   if (!el || el.nodeType !== 1) return null
   const parts = []
@@ -224,6 +228,202 @@ ipcRenderer.on('input', (_e, { selector, value, checked }) => {
   } finally {
     setTimeout(() => { replaying = false }, 0)
   }
+})
+
+/* ---------------------------------------------------- inspect mode -- */
+
+/* Hover highlights, click selects, and once something is selected every
+ * further hover measures the distance to it. The panel with the values lives
+ * up in the host; from here we only send what it needs.
+ *
+ * Shift-click fixes the element being measured against, and while it is fixed
+ * the hover stops moving it. Without that there is no way to *photograph* a
+ * distance: the measured pair is set by the pointer, and on the way out of the
+ * frame to reach the capture button the pointer crosses half the page and
+ * reassigns it to whatever it left over.
+ *
+ * The listeners are attached and detached with the mode rather than left in
+ * place behind a flag: while the mode is off a previewed page carries nothing
+ * of ours but the scroll bridge it already had.
+ *
+ * The selected/hovered pair is deliberately *not* cleared when the pointer
+ * leaves the page. It is what the screenshot redraws, and by the time anyone
+ * reaches the capture button the pointer is long gone from the frame. */
+
+/* The drawing and the property reading live in src/inspect.js, which cannot
+ * be `require`d from a sandboxed preload: the host hands us the source and it
+ * is evaluated here, in this isolated world. Same source the capture injects,
+ * so the overlay in a screenshot is drawn by exactly the same code.
+ *
+ * new Function rather than a <script> in the page: an isolated world is not
+ * subject to the page's own Content-Security-Policy, and a page that forbids
+ * inline script would otherwise silently have no inspect mode. */
+let inspect = null
+
+ipcRenderer.on('inspect-source', (_e, source) => {
+  if (inspect) return
+  try {
+    const factory = new Function(source + ';return PreviewerInspect')
+    inspect = factory()
+  } catch (err) {
+    ipcRenderer.sendToHost('inspect-broken', { reason: String((err && err.message) || err) })
+  }
+})
+
+const ins = {
+  on: false, sel: null, hov: null, lock: false,
+  k: 1, x: 0, y: 0, last: 0, tail: null, raw: false
+}
+
+/* Ni una vuelta por requestAnimationFrame, a diferencia del scroll de arriba.
+ *
+ * La primera versión encolaba el trabajo en un rAF y se protegía con un flag
+ * para no encolar dos veces. Si el frame deja de recibir fotogramas —la
+ * ventana tapada, sin foco, el compositor en reposo— ese callback no llega
+ * nunca, el flag se queda puesto y a partir de ahí todos los movimientos del
+ * ratón se descartan: el hover se muere en silencio hasta apagar y encender el
+ * modo. Salía intermitente, que es lo peor que podía pasar.
+ *
+ * Un reloj no se puede atascar. A 25 Hz —40 ms de periodo, que es lo que mide
+ * INS_MS— sobra para un puntero, y el trabajo
+ * —medir un elemento y mover seis divs— es de sobra más barato que eso. El
+ * temporizador de cola es para que la última posición no se quede sin pintar
+ * cuando el movimiento acaba dentro de la ventana de espera. */
+const INS_MS = 40
+
+function insReport () {
+  const info = inspect.overlay({ select: ins.sel, hover: ins.hov, k: ins.k, locked: ins.lock })
+  ipcRenderer.sendToHost('inspect-hover', {
+    label: info.label,
+    dist: info.dist,
+    why: info.why,
+    locked: ins.lock,
+    hoverPath: ins.hov && ins.hov !== ins.sel ? selectorFor(ins.hov) : null
+  })
+}
+
+function insTrack () {
+  clearTimeout(ins.tail)
+  ins.last = performance.now()
+  if (!ins.on || !inspect) return
+  const found = inspect.pick(ins.x, ins.y, ins.raw)
+  if (!found || found === ins.hov) return
+  ins.hov = found
+  insReport()
+}
+
+const insMove = (e) => {
+  /* Con la pareja fijada el ratón deja de mandar: puede pasearse por donde
+   * quiera hasta el botón de capturar sin llevarse la medida por delante. */
+  if (ins.lock) return
+  ins.x = e.clientX
+  ins.y = e.clientY
+  ins.raw = e.altKey
+  clearTimeout(ins.tail)
+  ins.tail = setTimeout(insTrack, INS_MS + 5)
+  const now = performance.now()
+  if (now - ins.last < INS_MS) return
+  ins.last = now
+  insTrack()
+}
+
+/* Swallowed wholesale: a click that reaches the page navigates away from the
+ * thing being inspected, and mousedown alone is enough to start a carousel
+ * drag or open a menu. The pointer events go too — a page listening on those
+ * instead sees the same gesture. */
+const insSwallow = (e) => {
+  if (!e.isTrusted || !inspect) return
+  e.preventDefault()
+  e.stopPropagation()
+  if (e.type !== 'click') return
+  const found = inspect.pick(e.clientX, e.clientY, e.altKey)
+  if (!found) return
+
+  /* Mayúsculas y no Opción: `alt` ya significa «el elemento literal, sin subir
+   * al ancestro que comparte caja» en pick(), y ese matiz hace falta también
+   * al fijar el segundo elemento. */
+  if (e.shiftKey && ins.sel) {
+    // Sobre el propio elemento seleccionado, el gesto suelta el pestillo.
+    ins.lock = found !== ins.sel
+    ins.hov = ins.lock ? found : ins.sel
+    insReport()
+    return
+  }
+
+  ins.sel = found
+  ins.hov = found
+  ins.lock = false
+  inspect.overlay({ select: ins.sel, hover: null, k: ins.k })
+  ipcRenderer.sendToHost('inspect-pick', {
+    data: inspect.read(found),
+    path: selectorFor(found)
+  })
+}
+
+const insKey = (e) => {
+  if (e.key !== 'Escape') return
+  e.preventDefault()
+  e.stopPropagation()
+  ipcRenderer.sendToHost('inspect-escape', { hadSelection: !!ins.sel, hadLock: ins.lock })
+}
+
+/* Aquí no hace falta reloj ninguno, al contrario que en el hover: el navegador
+ * ya emite los eventos de scroll al ritmo de los fotogramas, y si el frame no
+ * está pintando tampoco hay nada que ver — un resalte desfasado en una ventana
+ * que no se dibuja es invisible, y en cuanto vuelve a pintar el siguiente
+ * evento lo recoloca. */
+const insRedraw = () => {
+  if (!ins.on || !inspect || (!ins.sel && !ins.hov)) return
+  inspect.overlay({ select: ins.sel, hover: ins.hov, k: ins.k, locked: ins.lock })
+}
+
+const INS_EVENTS = [
+  ['mousemove', insMove],
+  ['click', insSwallow],
+  ['mousedown', insSwallow],
+  ['mouseup', insSwallow],
+  ['pointerdown', insSwallow],
+  ['pointerup', insSwallow],
+  ['keydown', insKey]
+]
+
+ipcRenderer.on('inspect', (_e, { on, k, clear }) => {
+  /* Sin el módulo no hay modo posible, y quedarse encendido sin responder es
+   * peor que no encenderse: que lo sepa el host. */
+  if (on && !inspect) {
+    ipcRenderer.sendToHost('inspect-broken', { reason: 'no llegó el código del inspector' })
+    return
+  }
+  ins.k = k || 1
+  if (clear === 'lock') {
+    ins.lock = false
+    ins.hov = ins.sel
+  } else if (clear) {
+    ins.sel = null
+    ins.hov = null
+    ins.lock = false
+  }
+
+  if (on && !ins.on) {
+    ins.on = true
+    for (const [type, fn] of INS_EVENTS) {
+      window.addEventListener(type, fn, { capture: true, passive: false })
+    }
+    window.addEventListener('scroll', insRedraw, { capture: true, passive: true })
+    window.addEventListener('resize', insRedraw)
+  } else if (!on && ins.on) {
+    ins.on = false
+    for (const [type, fn] of INS_EVENTS) window.removeEventListener(type, fn, true)
+    window.removeEventListener('scroll', insRedraw, true)
+    window.removeEventListener('resize', insRedraw)
+    clearTimeout(ins.tail)
+    ins.sel = null
+    ins.hov = null
+    ins.lock = false
+    if (inspect) inspect.clear()
+    return
+  }
+  insRedraw()
 })
 
 /* --------------------------------------------- canvas gestures/keys -- */

@@ -24,7 +24,8 @@
       "package.json"
     ],
     "asarUnpack": [
-      "src/guest/**"
+      "src/guest/**",
+      "src/inspect.js"
     ],
     "mac": {
       "category": "public.app-category.developer-tools",

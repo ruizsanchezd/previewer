@@ -23,6 +23,9 @@ const MAX_SCALE = 2
 const GAP = 48
 
 let guestPreload = null
+/* El código del inspector, tal cual, para dárselo al guest: su preload va en
+ * sandbox y no puede leerlo del disco. Ver src/inspect.js. */
+let inspectSource = null
 let uid = 0
 
 const state = {
@@ -101,7 +104,7 @@ function hydrate (d) {
     locale: d.locale || 'auto',
     zoom: d.zoom || 1,
     reducedMotion: !!d.reducedMotion,
-    el: null, webview: null, ready: false
+    el: null, webview: null, ready: false, insArmed: false
   }
 }
 
@@ -119,6 +122,7 @@ function applyTransform () {
   canvas.style.transform = `translate(${x}px, ${y}px) scale(${scale})`
   canvas.style.setProperty('--k', String(1 / scale))
   for (const p of state.panels) updateDensity(p)
+  syncInspectScale()
   viewport.style.backgroundSize = `${24 * scale}px ${24 * scale}px`
   viewport.style.backgroundPosition = `${x}px ${y}px`
   $('#zoom-level').textContent = Math.round(scale * 100) + '%'
@@ -185,6 +189,14 @@ function panelBadges (p) {
   return out
 }
 
+/* Retícula: el mismo gesto de «apuntar a un elemento» que usan las devtools
+ * de cualquier navegador, así que no hay que explicarlo. */
+const CROSSHAIR_ICON =
+  '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" ' +
+  'stroke="currentColor" stroke-width="1.5" stroke-linecap="round">' +
+  '<path d="M8 1.5v3.2M8 11.3v3.2M1.5 8h3.2M11.3 8h3.2"/>' +
+  '<circle cx="8" cy="8" r="2.9"/></svg>'
+
 function buildPanel (p) {
   const el = document.createElement('div')
   el.className = 'panel'
@@ -197,6 +209,7 @@ function buildPanel (p) {
     <span class="panel-size"></span>
     <span class="panel-badges"></span>
     <span class="panel-actions">
+      <button class="inspect" title="Inspeccionar elementos (CSS)">${CROSSHAIR_ICON}</button>
       <button class="theme" title="Alternar esquema de color">◐</button>
       <button class="more"  title="Opciones del panel">⋯</button>
       <button class="close" title="Quitar panel">✕</button>
@@ -284,6 +297,7 @@ function removePanel (p) {
   const i = state.panels.indexOf(p)
   if (i === -1) return
   state.panels.splice(i, 1)
+  if (insState.id === p.id) setInspect(null, false)
   selection.delete(p.id)
   p.el.remove()
   render()
@@ -325,6 +339,7 @@ function selectedPanels () { return state.panels.filter(isSelected) }
  * ella. Fijamos state.url antes de render() porque buildPanel lee state.url al
  * crear el webview: los paneles nuevos nacen ya en destino, sin recarga extra. */
 function replaceSet (set) {
+  if (insState.id) setInspect(null, false)
   if (set.url) applyUrl(set.url)
   for (const p of state.panels) p.el && p.el.remove()
   state.panels = set.panels.map(hydrate)
@@ -366,6 +381,11 @@ function wireWebview (p) {
     p.ready = true
     applyEmulation(p)
     wv.setZoomFactor(p.zoom)
+    p.insArmed = false
+    /* Una recarga se lleva por delante los listeners del guest, así que el
+     * modo hay que volver a encenderlo — y sin selección, que el elemento de
+     * antes ya no es el mismo objeto. */
+    if (insState.id === p.id) setInspect(p, true)
   })
 
   wv.addEventListener('did-fail-load', (e) => {
@@ -420,6 +440,50 @@ function onGuestMessage (p, channel, data) {
 
     case 'shortcut':
       handleShortcut(data)
+      break
+
+    case 'inspect-pick':
+      if (insState.id !== p.id) return
+      insState.data = data.data
+      insState.path = data.path
+      dropInsLock()
+      paintInspector()
+      askPlatformFont(p)
+      break
+
+    case 'inspect-hover':
+      if (insState.id !== p.id) return
+      insState.hoverPath = data.hoverPath
+      insState.hoverLabel = data.label
+      insState.dist = data.dist
+      insState.why = data.why
+      insState.locked = !!data.locked
+      /* Sin nada seleccionado el hover sólo resalta dentro del frame: no hay
+       * distancia que contar todavía. */
+      if (insState.data) paintDistance()
+      break
+
+    case 'inspect-broken':
+      /* Sólo pasa si la página bloquea de algún modo la evaluación del
+       * módulo. Mejor decirlo que dejar un modo que no responde. */
+      toast('No se pudo activar la inspección en esta página: ' + data.reason)
+      setInspect(p, false)
+      break
+
+    case 'inspect-escape':
+      /* Escape va por pasos, como en Figma: suelta lo fijado, luego la
+       * selección, y a la tercera sale del modo. */
+      if (data.hadLock) {
+        dropInsLock()
+        sendInspect(p, true, 'lock')
+        paintDistance()
+      } else if (data.hadSelection) {
+        dropInsSelection()
+        sendInspect(p, true, true)
+        paintInspector()
+      } else {
+        setInspect(p, false)
+      }
       break
 
     case 'page-ready':
@@ -554,7 +618,7 @@ function variants (p) {
   return out
 }
 
-async function screenshotPanel (p, mode = 'full') {
+async function screenshotPanel (p, mode = 'full', withInspect = false) {
   if (capturing) return
   if (!p.ready) { toast('El panel aún está cargando'); return }
   capturing = true
@@ -569,6 +633,34 @@ async function screenshotPanel (p, mode = 'full') {
     }
     const date = new Date()
     const url = p.webview.getURL()
+
+    /* La captura corre sobre una copia recién cargada de la página, que no
+     * sabe nada de lo seleccionado: le pasamos las rutas para que vuelva a
+     * encontrar los elementos, y las secciones ya calculadas para la franja
+     * de información. Si el elemento no aparece —una página que se dibuja
+     * sola y no sale igual dos veces— la imagen sale sin resalte y se avisa,
+     * en vez de perder la captura. */
+    /* La pareja medida sólo viaja a la captura si está fijada.
+     *
+     * Antes viajaba la última que hubiera, y la última que hay casi nunca es
+     * la que se quería: al salir del frame camino del botón, el puntero cruza
+     * media página y la reasigna a lo que pisó por el borde. La imagen salía
+     * con una caja magenta y unas cotas que nadie había pedido, en una captura
+     * cuyo destino es explicarle algo a otra persona. Fijarla es el gesto que
+     * dice «esta medida es la que quiero». */
+    const measured = insState.locked && insState.hoverPath
+    const inspectSpec = withInspect && insState.path
+      ? {
+          path: insState.path,
+          hoverPath: measured ? insState.hoverPath : null,
+          label: insState.data.label,
+          hoverLabel: measured ? insState.hoverLabel : null,
+          dist: measured ? insState.dist : null,
+          why: measured ? insState.why : null,
+          sections: window.PreviewerInspect.sections(insState.data)
+        }
+      : null
+
     const res = await window.previewer.capturePanel({
       url,
       width: p.w,
@@ -580,6 +672,7 @@ async function screenshotPanel (p, mode = 'full') {
       density: CAPTURE_DENSITY,
       mode,
       scrollTo,
+      inspect: inspectSpec,
       fileName: shotName(p, date, mode),
       header: {
         name: p.name,
@@ -593,6 +686,15 @@ async function screenshotPanel (p, mode = 'full') {
 
     const notes = []
     if (res.truncated) notes.push('recortada, la página es larguísima')
+    if (inspectSpec && res.inspected === false) {
+      notes.push('sin el resalte: el elemento no aparece igual al recargar la página')
+    }
+    if (inspectSpec && res.column === false) notes.push('sin la columna de datos')
+    /* Había una distancia en el panel y no está en la imagen: mejor decirlo
+     * aquí que dejar que se descubra al abrir el archivo. */
+    if (inspectSpec && !measured && insState.dist) {
+      notes.push('sin la distancia: no estaba fijada, se fija con Mayúsculas + clic')
+    }
     /* Nothing we do adds pixels an <img> never had, so when the page's own
      * bitmaps are the limit it is worth saying: the soft logo in the shot is the
      * page's, not the capture's, and no setting here would have fixed it. */
@@ -609,6 +711,220 @@ async function screenshotPanel (p, mode = 'full') {
   } finally {
     capturing = false
   }
+}
+
+/* ------------------------------------------------------ inspección */
+
+/* Un solo frame inspecciona a la vez: el panel de propiedades es uno, y
+ * repartirlo entre frames sólo añadiría la duda de a cuál pertenece lo que
+ * estás leyendo. Encender el modo en otro frame lo apaga en el anterior.
+ *
+ * No se guarda en localStorage a propósito: es una herramienta de un rato, y
+ * arrancar la app con un frame que no responde a los clics sería un misterio.
+ *
+ * `hover` guarda la última pareja medida y no se borra al salir la página con
+ * el ratón: es lo que dibuja la captura, y para cuando pulsas «Capturar» el
+ * puntero ya está fuera del frame. Con `locked`, además, el ratón ha dejado de
+ * moverla: es la única forma de capturar una distancia concreta en vez de la
+ * que hubiera bajo el puntero al salir del frame. */
+const insState = {
+  id: null, data: null, path: null,
+  hoverPath: null, hoverLabel: null, dist: null, why: null, locked: false
+}
+
+/* Suelta lo medido y deja sólo el elemento seleccionado. */
+function dropInsLock () {
+  insState.hoverPath = null
+  insState.hoverLabel = null
+  insState.dist = null
+  insState.why = null
+  insState.locked = false
+}
+
+/* …y esto suelta también la selección. */
+function dropInsSelection () {
+  insState.data = null
+  insState.path = null
+  dropInsLock()
+}
+
+const inspector = $('#inspector')
+const insBody = $('#ins-body')
+
+function inspecting () {
+  return insState.id ? state.panels.find((p) => p.id === insState.id) || null : null
+}
+
+function sendInspect (p, on, clear) {
+  if (!p || !p.ready) return
+  try {
+    /* Una vez por carga de página: el preload se vuelve a ejecutar en cada
+     * navegación y se lleva el módulo con él. Los mensajes llegan en orden,
+     * así que para cuando el guest atienda «inspect» ya lo tiene evaluado. */
+    if (on && !p.insArmed && inspectSource) {
+      p.webview.send('inspect-source', inspectSource)
+      p.insArmed = true
+    }
+    // `clear` es true (todo) o 'lock' (sólo la pareja medida).
+    p.webview.send('inspect', { on, k: 1 / state.canvas.scale, clear: clear || false })
+    lastInspectK = on ? Math.round((1 / state.canvas.scale) * 100) / 100 : null
+  } catch (_) {}
+}
+
+function setInspect (p, on) {
+  const previous = inspecting()
+  if (previous && previous !== p) sendInspect(previous, false)
+
+  insState.id = on ? p.id : null
+  dropInsSelection()
+
+  if (on) sendInspect(p, true, true)
+  else if (p) sendInspect(p, false)
+
+  for (const q of state.panels) {
+    if (q.el) q.el.querySelector('.inspect').classList.toggle('on', q.id === insState.id)
+  }
+  paintInspector()
+}
+
+/* El contra-escalado de las etiquetas del overlay depende del zoom del lienzo,
+ * así que hay que reenviarlo — pero sólo cuando cambia de verdad, no en cada
+ * evento de rueda: un pan no toca la escala. */
+let lastInspectK = null
+
+function syncInspectScale () {
+  const p = inspecting()
+  if (!p) { lastInspectK = null; return }
+  const k = Math.round((1 / state.canvas.scale) * 100) / 100
+  if (k === lastInspectK) return
+  lastInspectK = k
+  sendInspect(p, true)
+}
+
+function paintInspector () {
+  const p = inspecting()
+  inspector.hidden = !p
+  if (!p) return
+
+  $('#ins-frame').textContent = p.name
+  insBody.innerHTML = ''
+
+  if (!insState.data) {
+    const hint = document.createElement('p')
+    hint.className = 'ins-hint'
+    hint.textContent = 'Clica un elemento del frame para ver sus propiedades. ' +
+      'Con uno seleccionado, pasa el ratón por otro y te mide la distancia; ' +
+      'con Mayúsculas + clic la fija, para poder capturarla.'
+    insBody.appendChild(hint)
+    return
+  }
+
+  const head = document.createElement('div')
+  head.className = 'ins-sel'
+  head.textContent = insState.data.label
+  insBody.appendChild(head)
+
+  /* Se crea siempre y se rellena aparte: es lo único que cambia al mover el
+   * ratón, y reconstruir las filas de propiedades en cada hover sería tirar
+   * medio panel a la basura para actualizar una línea. */
+  const dist = document.createElement('div')
+  dist.className = 'ins-dist'
+  dist.innerHTML =
+    '<div class="ins-dist-head"><span class="ins-dist-v"></span>' +
+    '<span class="ins-dist-pin"></span></div>' +
+    '<span class="ins-dist-to"></span><span class="ins-dist-why"></span>'
+  insBody.appendChild(dist)
+  paintDistance()
+
+  for (const sec of window.PreviewerInspect.sections(insState.data)) {
+    const box = document.createElement('div')
+    box.className = 'ins-sec'
+    const title = document.createElement('div')
+    title.className = 'ins-sec-title'
+    title.textContent = sec.title
+    box.appendChild(title)
+    for (const row of sec.rows) box.appendChild(insRow(row))
+    insBody.appendChild(box)
+  }
+}
+
+/* La tipografía real se pregunta al proceso principal, que es quien puede
+ * hablar por el protocolo de DevTools, y tarda unos milisegundos: el panel se
+ * pinta ya y la fila se rellena cuando llega. Si para entonces has clicado
+ * otra cosa, la respuesta se tira. */
+async function askPlatformFont (p) {
+  if (!insState.data || !insState.data.text || !insState.path) return
+  const forPath = insState.path
+  let name = null
+  try {
+    name = await window.previewer.platformFont(p.webview.getWebContentsId(), forPath)
+  } catch (_) {}
+  if (!name || insState.path !== forPath || !insState.data.text) return
+  insState.data.text.rendered = name
+  paintInspector()
+}
+
+function paintDistance () {
+  const el = insBody.querySelector('.ins-dist')
+  if (!el) return
+  el.hidden = !insState.dist
+  if (!insState.dist) return
+  el.querySelector('.ins-dist-v').textContent = insState.dist
+  /* Que la medida esté fijada tiene que verse: es la diferencia entre un
+   * número que se irá en cuanto muevas el ratón y uno que va a salir en la
+   * captura. */
+  const pin = el.querySelector('.ins-dist-pin')
+  pin.hidden = !insState.locked
+  pin.textContent = 'fijado'
+  el.querySelector('.ins-dist-to').textContent =
+    'hasta ' + (insState.hoverLabel || 'el otro elemento') +
+    (insState.locked ? '' : ' · Mayúsculas + clic para fijarla')
+  /* De dónde sale la distancia, cuando se puede saber sin inventar. */
+  const why = el.querySelector('.ins-dist-why')
+  why.hidden = !insState.why
+  why.textContent = insState.why || ''
+}
+
+/* Cada valor es un botón: el gesto que sigue a leer un hex o un tamaño es
+ * pegarlo en otro sitio. */
+function insRow (row) {
+  const el = document.createElement('button')
+  el.className = 'ins-row'
+  /* La pila de fuentes completa y el elemento del que viene un fondo heredado
+   * son datos de segundo orden: caben en el tooltip y no en la fila. */
+  el.title = (row.note ? row.note + '\n' : '') + 'Copiar «' + row.v + '»'
+
+  const k = document.createElement('span')
+  k.className = 'ins-k'
+  k.textContent = row.k
+
+  const v = document.createElement('span')
+  v.className = 'ins-v'
+  if (row.swatch) {
+    const dot = document.createElement('span')
+    dot.className = 'ins-swatch'
+    dot.style.background = row.swatch
+    v.appendChild(dot)
+  }
+  const text = document.createElement('span')
+  text.className = 'ins-vt'
+  text.textContent = row.v
+  v.appendChild(text)
+  if (row.tag) {
+    const tag = document.createElement('span')
+    tag.className = 'ins-tag' + (row.bad ? ' bad' : '')
+    tag.textContent = row.tag
+    v.appendChild(tag)
+  }
+
+  el.append(k, v)
+  el.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(row.v)
+      toast('Copiado: ' + row.v)
+    } catch (_) { toast('No se pudo copiar al portapapeles') }
+  })
+  return el
 }
 
 /* ------------------------------------------------------------- popover */
@@ -780,6 +1096,10 @@ function wirePanelChrome (p) {
 
   p.el.querySelector('.close').addEventListener('click', () => removePanel(p))
 
+  p.el.querySelector('.inspect').addEventListener('click', () => {
+    setInspect(p, insState.id !== p.id)
+  })
+
   p.el.querySelector('.theme').addEventListener('click', () => {
     const order = ['auto', 'light', 'dark']
     p.colorScheme = order[(order.indexOf(p.colorScheme) + 1) % order.length]
@@ -852,6 +1172,9 @@ function openPanelMenu (p, anchor) {
     root.appendChild(menuItem('Duplicar panel', '', () => {
       addPanel(serialize(p)); closePopover()
     }))
+    root.appendChild(menuItem(
+      insState.id === p.id ? 'Salir del modo inspección' : 'Inspeccionar elementos', '',
+      () => { setInspect(p, insState.id !== p.id); closePopover() }))
     root.appendChild(menuItem('Screenshot de la página', 'JPG', () => {
       closePopover(); screenshotPanel(p, 'full')
     }))
@@ -1338,7 +1661,28 @@ window.addEventListener('keydown', (e) => {
   const typing = ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)
   if (e.code === 'Space' && !typing) { e.preventDefault(); setPanMode(true); return }
   /* Con un menú abierto, Escape es suyo: lo cierra openPopover. */
-  if (e.key === 'Escape' && popover.hidden && !typing) { clearSelection(); return }
+  if (e.key === 'Escape' && popover.hidden && !typing) {
+    /* Con el modo activo Escape es suyo, tenga el foco la página o el lienzo:
+     * mismos pasos que dentro del frame —suelta lo fijado, luego la selección,
+     * y a la última sale del modo. */
+    if (insState.id) {
+      const p = inspecting()
+      if (insState.locked) {
+        dropInsLock()
+        sendInspect(p, true, 'lock')
+        paintDistance()
+      } else if (insState.data) {
+        dropInsSelection()
+        sendInspect(p, true, true)
+        paintInspector()
+      } else {
+        setInspect(p, false)
+      }
+      return
+    }
+    clearSelection()
+    return
+  }
   if (e.metaKey || e.ctrlKey) {
     const handled = ['r', 'R', '0', '=', '+', '-', 'l', 'L', 'd', 'D']
     if (handled.includes(e.key)) {
@@ -1384,6 +1728,27 @@ $('#btn-sets').addEventListener('click', (e) => {
   openSetsMenu(e.currentTarget)
 })
 
+$('#ins-close').addEventListener('click', () => setInspect(inspecting(), false))
+$('#ins-shot').addEventListener('click', () => {
+  const p = inspecting()
+  if (!p) return
+  if (!insState.path) { toast('Clica primero un elemento del frame'); return }
+  screenshotPanel(p, 'viewport', true)
+})
+
+/* El panel se puede mover: es grande y el frame que estás mirando puede
+ * quedar justo debajo. Reutiliza el shield del resto de arrastres. */
+$('#inspector').querySelector('.ins-bar').addEventListener('mousedown', (e) => {
+  if (e.target.closest('button') || e.button !== 0) return
+  const r = inspector.getBoundingClientRect()
+  const start = { x: e.clientX, y: e.clientY }
+  withShield((ev) => {
+    inspector.style.left = Math.max(8, r.left + ev.clientX - start.x) + 'px'
+    inspector.style.top = Math.max(8, r.top + ev.clientY - start.y) + 'px'
+    inspector.style.right = 'auto'
+  }, null, 'grabbing')
+})
+
 $('#zoom-in').addEventListener('click', () => zoomBy(1.2))
 $('#zoom-out').addEventListener('click', () => zoomBy(1 / 1.2))
 $('#zoom-level').addEventListener('click', () => {
@@ -1423,6 +1788,7 @@ function syncChrome () {
 
 ;(async function boot () {
   guestPreload = await window.previewer.guestPreloadPath()
+  inspectSource = await window.previewer.inspectSource()
   restore()
   syncChrome()
   render()
