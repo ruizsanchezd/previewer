@@ -260,12 +260,23 @@ automática, y no por descuido: ver "Si algún día molesta ese paso".
 Sólo macOS: la conversión a JPEG usa `sips`, que es de macOS y no tiene equivalente
 gratis en Windows sin meter dependencias.
 
-**El icono** se genera de `build/icon.png` a 1024×1024. Tiene que ser **opaco de borde a
-borde**, sin transparencia, sin esquinas redondeadas propias y sin sombra: macOS 26 aplica
-él mismo la máscara, la sombra y el brillo del borde. Comprobado a mano: en cuanto el PNG
-tiene un solo píxel transparente, Tahoe deja de tratarlo como icono moderno y lo mete
-dentro de una caja gris clara con el dibujo reducido. La plantilla de 824×824 con márgenes
-que recomiendan los blogs y la propia documentación antigua de Apple provoca justo eso.
+**El icono** se genera de `build/icon.png` a 1024×1024. El dibujo tiene que llegar **de
+borde a borde**, sin márgenes y sin sombra propia: macOS 26 aplica él mismo la máscara, la
+sombra y el brillo del borde. La plantilla de 824×824 con márgenes que recomiendan los
+blogs y la documentación antigua de Apple es justo lo que no hay que hacer: Tahoe deja de
+tratarlo como icono moderno y lo mete dentro de una caja gris clara con el dibujo reducido.
+
+Lo que sí conviene es recortar el PNG con **la propia esquina redondeada del sistema**
+(a 1024, radio de unos 256 px, transparente fuera). Comprobado a mano renderizando el
+icono real con `NSWorkspace.icon(forFile:)`:
+
+- Como icono de la **app**, da igual: Tahoe enmascara encima y el resultado con esquina
+  recortada y sin recortar es el mismo. No hay caja gris mientras el dibujo llegue al
+  borde — lo que la provoca es el margen, no la transparencia.
+- Como icono del **volumen del DMG** — el disco que se monta al abrir el instalador — sí
+  importa: ahí macOS **no** enmascara nada, pinta el `.icns` tal cual. Con el PNG opaco
+  sale un cuadrado a sangre con las esquinas casi rectas; con la esquina ya recortada sale
+  el icono con su forma correcta.
 
 ### Lo que tienen que hacer tus compañeros la primera vez
 
