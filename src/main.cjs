@@ -179,27 +179,6 @@ const SCROLL_TO = (y) => `(() => {
   return Math.round(window.scrollY)
 })()`
 
-/* Raising the density sharpens anything the browser draws — text, borders,
- * shadows, SVG — but an <img> can only ever be as sharp as the file behind it,
- * and plenty of sites ship bitmaps at barely 1:1 with their CSS size. Capturing
- * one of those at @3x magnifies the same few pixels three times and the result
- * looks worse, not better, which is confusing when you have just turned the
- * density up. So: find the biggest image that cannot keep up, and say so. */
-const ASSET_CEILING = (density) => `(() => {
-  let worst = null
-  for (const im of document.querySelectorAll('img')) {
-    const r = im.getBoundingClientRect()
-    if (r.width < 64 || r.height < 40 || !im.naturalWidth) continue
-    const per = im.naturalWidth / r.width
-    if (per >= ${density}) continue
-    const area = r.width * r.height
-    if (!worst || area > worst.area) {
-      worst = { area, css: Math.round(r.width), source: im.naturalWidth, per: Math.round(per * 100) / 100 }
-    }
-  }
-  return worst
-})()`
-
 /* Only `fixed`, never `sticky`: a sticky element resolves against scroll 0 and
  * lands in its own place, but a fixed one is pinned to whatever viewport it is
  * rendered into — and a slice's viewport is the slice. A bottom-anchored bar
@@ -726,9 +705,6 @@ async function capturePanel (spec) {
       }
     }
 
-    let ceiling = null
-    try { ceiling = await wc.executeJavaScript(ASSET_CEILING(density)) } catch (_) {}
-
     /* La columna se dibuja aparte y con los datos que vinieron en el spec, así
      * que no toca la página ni depende de que el resalte se haya encontrado. */
     let column = null
@@ -779,7 +755,6 @@ async function capturePanel (spec) {
       scrolledTo: landed,
       inspected,
       column: !!column,
-      ceiling,
       truncated: mode === 'viewport' ? false : truncated
     }, file)
   } catch (err) {

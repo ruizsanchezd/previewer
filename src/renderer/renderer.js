@@ -716,25 +716,25 @@ async function screenshotPanel (p, mode = 'full', withInspect = false, note = ''
     })
     if (!res.ok) { toast('No se pudo capturar: ' + res.reason); return }
 
+    /* El aviso dice dónde está el archivo y poco más.
+     *
+     * Lo único que se añade es lo que hace que la imagen no sea la que
+     * pediste: eso hay que decirlo antes de que se descubra al abrirla. El
+     * resto —la densidad, que es siempre @2x, y el techo de resolución de las
+     * imágenes de la página— se ha quitado: la densidad no cambia nunca y el
+     * techo lo cuenta la fila «Imagen» del panel de inspección, del elemento
+     * que hayas clicado y cuando lo preguntas. Repetirlo en cada captura sólo
+     * enseñaba a no leer el aviso, avisos útiles incluidos. */
     const notes = []
     if (res.truncated) notes.push('recortada, la página es larguísima')
     if (inspectSpec && res.inspected === false) {
       notes.push('sin el resalte: el elemento no aparece igual al recargar la página')
     }
     if (inspectSpec && res.column === false) notes.push('sin la columna de datos')
-    /* Había una distancia en el panel y no está en la imagen: mejor decirlo
-     * aquí que dejar que se descubra al abrir el archivo. */
     if (inspectSpec && !measured && insState.dist) {
       notes.push('sin la distancia: no estaba fijada, se fija con Mayúsculas + clic')
     }
-    /* Nothing we do adds pixels an <img> never had, so when the page's own
-     * bitmaps are the limit it is worth saying: the soft logo in the shot is the
-     * page's, not the capture's, and no setting here would have fixed it. */
-    if (res.ceiling) {
-      notes.push(`la página tiene imágenes por debajo de @${res.density}x ` +
-                 `(la mayor: ${res.ceiling.source}px de origen mostrados a ${res.ceiling.css}px)`)
-    }
-    toast(`Guardado en Descargas/previewer · ${res.width}×${res.height} @${res.density}x · ` +
+    toast(`Guardado en Descargas/previewer · ${res.width}×${res.height} · ` +
           `${(res.bytes / 1e6).toFixed(1)} MB` +
           (notes.length ? ` (${notes.join('; ')})` : ''),
           { action: { label: 'Mostrar en Finder', run: () => window.previewer.reveal(res.file) } })

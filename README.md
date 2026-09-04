@@ -419,9 +419,15 @@ Detalles de implementación que importan si tocas esto:
 nunca puede salir mejor que el archivo que tiene detrás. Muchas webs sirven bitmaps a
 poco más de 1:1 con su tamaño en CSS, y ampliarlos no añade información.
 
-Por eso, al terminar, el aviso dice si la propia página traía imágenes por debajo de
-`@2x`, y cuál es la peor. Si sale ese aviso, el logo blandurrio de la captura es de la
-página, no de la captura, y no hay ajuste aquí que lo arregle.
+Así que si un logo sale blandurrio, mira su fila **Imagen** en el panel de inspección: da
+el tamaño del archivo frente al que se muestra. Si el archivo es más pequeño, el problema
+es de la página y no hay ajuste aquí que lo arregle.
+
+Esto lo decía antes el aviso de cada captura, con la peor imagen de la página. Se ha
+quitado: salía siempre, hablaba de la página y no de la captura que acababa de guardarse, y
+un aviso que sale siempre enseña a no leer el aviso —los que sí importan incluidos, como
+que la imagen ha salido recortada o sin el resalte—. La cifra sigue estando, del elemento
+que preguntes y cuando la preguntes.
 
 Ojo también con cómo miras el archivo: a `@2x` una captura de 1280px de ancho son 2560px,
 y verla al 100% equivale a mirar la web al 200%. Para juzgarla, ajústala al ancho.
