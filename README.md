@@ -285,6 +285,12 @@ Al lado hay un botón azul con un `⏎` que hace lo mismo que el `Enter`: el pla
 cuenta cómo se termina esto desaparece en cuanto escribes la primera letra, y justo
 entonces es cuando hace falta. El botón está siempre que la línea está abierta, así no
 aparece de golpe a media frase.
+
+El campo **crece a lo alto** conforme escribes, hasta unas seis líneas, y de ahí en
+adelante hace scroll. Una nota rara vez cabe en un renglón, y un campo de una línea con el
+texto desfilando por dentro es justo el que no te deja releer lo que has escrito antes de
+capturar. `⇧` + `Enter` parte la línea, como en cualquier chat, y los saltos llegan a la
+imagen.
 La nota sale **arriba de la columna, antes del selector**, en sans y en blanco: es lo único
 de la imagen escrito por una persona para otra, y lo primero que hay que leer. El selector
 y el CSS son el material de apoyo de lo que dice la nota.

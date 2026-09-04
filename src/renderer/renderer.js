@@ -796,12 +796,21 @@ const insNoteInput = $('#ins-note')
 function openInsNote () {
   insNoteRow.hidden = false
   insNoteInput.value = ''
+  growInsNote()
   insNoteInput.focus()
 }
 
 function closeInsNote () {
   insNoteRow.hidden = true
   insNoteInput.value = ''
+  growInsNote()
+}
+
+/* El alto lo pone el contenido: se suelta a `auto` para medirlo de verdad y se
+ * fija en lo que mide, que el tope lo pone el max-height del CSS. */
+function growInsNote () {
+  insNoteInput.style.height = 'auto'
+  insNoteInput.style.height = insNoteInput.scrollHeight + 'px'
 }
 
 function inspecting () {
@@ -1817,11 +1826,20 @@ $('#ins-shot').addEventListener('click', () => {
 /* El botón y el Enter son el mismo gesto, así que pasan por el mismo sitio. */
 $('#ins-note-go').addEventListener('click', () => $('#ins-shot').click())
 
+insNoteInput.addEventListener('input', growInsNote)
+
 insNoteInput.addEventListener('keydown', (e) => {
   /* Enter captura con nota o sin ella: el paso nuevo nunca puede dejarte sin
    * la captura de siempre, sólo ofrecerte contar algo de camino. Lo mismo hace
-   * el botón ⏎ de al lado, para quien esté con el ratón. */
-  if (e.key === 'Enter') { e.preventDefault(); $('#ins-shot').click(); return }
+   * el botón ⏎ de al lado, para quien esté con el ratón.
+   *
+   * Con ⇧ parte la línea, como en cualquier chat: la nota que enumera dos
+   * cosas se lee mejor en dos renglones, y los saltos llegan a la imagen. */
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    $('#ins-shot').click()
+    return
+  }
   if (e.key === 'Escape') { e.preventDefault(); closeInsNote() }
 })
 

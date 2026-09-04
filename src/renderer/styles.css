@@ -419,28 +419,38 @@ button:active { background: #ffffff14; }
 .ins-note {
   flex: none;
   display: flex;
-  align-items: center;
+  /* Al fondo: cuando el campo crece, el ⏎ se queda pegado a la última línea
+   * escrita en vez de irse al centro de un bloque de texto. */
+  align-items: flex-end;
   gap: 6px;
   /* 10px a los lados: la misma sangría que la caja del selector de debajo, que
    * es justo lo que la nota va a describir. */
   padding: 8px 10px;
   border-bottom: 1px solid var(--line-soft);
 }
-.ins-note input {
+/* Un textarea de una línea que crece, no un input: la nota casi nunca cabe en
+ * un renglón, y un campo de una línea con el texto desfilando por dentro es
+ * justo el que no te deja releer lo que escribiste antes de capturar. Crece
+ * hasta la altura de unas seis líneas y de ahí en adelante hace scroll, que es
+ * donde deja de ser una nota. */
+.ins-note textarea {
   flex: 1 1 auto;
   min-width: 0;
-  height: 26px;
-  padding: 0 8px;
+  min-height: 26px;
+  max-height: 104px;
+  padding: 5px 8px;
   background: var(--bg-input);
   border: 1px solid var(--accent-dim);
   border-radius: 6px;
   color: var(--text);
-  font: 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  font: 12px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
   outline: 0;
+  resize: none;
+  overflow-y: auto;
   user-select: text;
 }
-.ins-note input::placeholder { color: var(--text-faint); }
-.ins-note input:focus { border-color: var(--accent); }
+.ins-note textarea::placeholder { color: var(--text-faint); }
+.ins-note textarea:focus { border-color: var(--accent); }
 
 /* El botón dice lo que el placeholder ya no puede decir: en cuanto escribes la
  * primera letra desaparece la única pista de cómo se termina esto. Azul y

@@ -360,7 +360,8 @@ function inspectBlock (ins) {
   const note = ins.note
     ? `<div style="background:#ffffff12;border-left:3px solid #4c8dff;padding:8px 11px;` +
       `margin-bottom:12px;color:#fff;font:15px/1.45 -apple-system,BlinkMacSystemFont,` +
-      `'Segoe UI',sans-serif;word-break:break-word">${esc(ins.note)}</div>`
+      `'Segoe UI',sans-serif;word-break:break-word;white-space:pre-wrap">` +
+      `${esc(ins.note)}</div>`
     : ''
 
   return `<div style="margin-top:14px;padding-top:12px;border-top:1px solid #24282e;` +
@@ -428,7 +429,7 @@ function columnHtml (head, ins) {
     hr{border:0;border-top:1px solid #24282e;margin:16px 0}
     .note{background:#ffffff12;border-left:3px solid #4c8dff;border-radius:0 5px 5px 0;
       padding:10px 12px;margin-bottom:18px;font:15px/1.45 ${sans};color:#fff;
-      word-break:break-word}
+      word-break:break-word;white-space:pre-wrap}
     .sel{color:#4c8dff;font-weight:600;word-break:break-all}
     .dist{color:#ff7bff;padding-top:6px}
     .dist .to{color:#8a919c;display:block;font-size:13px;word-break:break-all}
