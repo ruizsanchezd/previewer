@@ -354,8 +354,18 @@ function inspectBlock (ins) {
       `<span style="color:#8a919c">hasta ${esc(ins.hoverLabel || 'el otro elemento')}</span></div>`
     : ''
 
+  /* Esta franja sólo sale cuando la columna no se pudo dibujar. La nota se
+   * arrastra hasta aquí para que un fallo de la columna no se lleve por
+   * delante lo único que la captura no puede volver a deducir. */
+  const note = ins.note
+    ? `<div style="background:#ffffff12;border-left:3px solid #4c8dff;padding:8px 11px;` +
+      `margin-bottom:12px;color:#fff;font:15px/1.45 -apple-system,BlinkMacSystemFont,` +
+      `'Segoe UI',sans-serif;word-break:break-word">${esc(ins.note)}</div>`
+    : ''
+
   return `<div style="margin-top:14px;padding-top:12px;border-top:1px solid #24282e;` +
       `font:15px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace">` +
+      note +
       `<div style="color:#4c8dff;font-weight:600;padding-bottom:2px">${esc(ins.label)}</div>` +
       dist +
       `<div style="column-width:250px;column-gap:24px;margin-top:8px">${cols}</div>` +
@@ -400,6 +410,13 @@ function columnHtml (head, ins) {
       `</div>`
     : ''
 
+  /* La nota va arriba y en sans, no en mono: es lo único de la columna escrito
+   * por una persona para otra, y lo primero que hay que leer. El selector y el
+   * CSS son el material de apoyo de lo que dice aquí. */
+  const note = ins.note
+    ? `<div class="note">${esc(ins.note)}</div>`
+    : ''
+
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{width:${COLUMN_CSS_WIDTH}px;background:#0b0c0e;color:#e6e8ec;
@@ -409,6 +426,9 @@ function columnHtml (head, ins) {
     .url{font:13px/1.5 ${mono};color:#4c8dff;padding-top:8px;word-break:break-all}
     .meta{font:12px/1.5 ${mono};color:#5d646e;padding-top:4px}
     hr{border:0;border-top:1px solid #24282e;margin:16px 0}
+    .note{background:#ffffff12;border-left:3px solid #4c8dff;border-radius:0 5px 5px 0;
+      padding:10px 12px;margin-bottom:18px;font:15px/1.45 ${sans};color:#fff;
+      word-break:break-word}
     .sel{color:#4c8dff;font-weight:600;word-break:break-all}
     .dist{color:#ff7bff;padding-top:6px}
     .dist .to{color:#8a919c;display:block;font-size:13px;word-break:break-all}
@@ -430,6 +450,7 @@ function columnHtml (head, ins) {
     <div class="meta">${esc(head.meta)}</div>
     <div class="meta">${esc(head.when)}</div>
     <hr>
+    ${note}
     <div class="sel">${esc(ins.label)}</div>
     ${dist}
     ${sections}

@@ -56,6 +56,7 @@ con cualquier URL: no dependemos de iframes ni de que la web permita ser embebid
 | `Esc` | Deseleccionar (en modo inspección: suelta lo fijado, luego la selección, luego sale) |
 | `Alt` señalando, en modo inspección | El elemento exacto bajo el cursor, sin heurística |
 | `⇧` + clic, en modo inspección | Fija el elemento contra el que se mide, para poder capturar la distancia |
+| `Enter` en la nota de la captura | Captura, con nota o sin ella (`Esc` cierra la nota sin capturar) |
 | Arrastrar el título de un panel | Mover ese panel, o toda la selección si está dentro |
 | Arrastrar la esquina inferior derecha | Redimensionar el panel |
 | `⌘R` | Recargar todos los paneles |
@@ -275,6 +276,31 @@ dentro de la columna y sería la misma información dos veces.
 
 Si los datos son más altos que la página, la imagen crece y el hueco bajo la página se
 rellena con el fondo de la columna.
+
+#### La nota
+
+Al pulsar **Capturar** aparece una línea para escribir una **nota opcional**: qué está mal
+en esa pantalla. `Enter` captura —con nota o sin ella—, `Esc` cierra la línea sin capturar.
+Al lado hay un botón azul con un `⏎` que hace lo mismo que el `Enter`: el placeholder que
+cuenta cómo se termina esto desaparece en cuanto escribes la primera letra, y justo
+entonces es cuando hace falta. El botón está siempre que la línea está abierta, así no
+aparece de golpe a media frase.
+La nota sale **arriba de la columna, antes del selector**, en sans y en blanco: es lo único
+de la imagen escrito por una persona para otra, y lo primero que hay que leer. El selector
+y el CSS son el material de apoyo de lo que dice la nota.
+
+La columna ya contaba *qué* es el elemento, pero no *qué le pasa*, y eso acababa en el
+mensaje de Slack, que se separa de la imagen en cuanto alguien la reenvía. Con la nota
+dentro del PNG, la captura sigue explicándose sola después del tercer reenvío.
+
+Se pide al pulsar el botón y no antes por dos razones. Un campo fijo en el panel es una
+caja vacía más que mirar y que pide ser rellenada, y el panel viene de una limpieza de
+ruido. Y se abre siempre vacía —no recuerda la anterior— porque una nota del error de
+antes pegada en la captura de ahora es peor que no tener nota: quien la lee se la cree.
+Cambiar de elemento seleccionado también la cierra, por lo mismo.
+
+En las capturas normales, sin inspección, no hay nota: ahí sólo está la franja de arriba,
+que es de una línea y va apretada. Si algún día hace falta, es el sitio.
 
 Sólo viewport, nunca página entera: acotar un elemento en una imagen de 8000px de alto no
 le sirve a nadie.

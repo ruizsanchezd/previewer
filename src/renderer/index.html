@@ -55,8 +55,13 @@
     <div class="ins-bar">
       <span class="ins-title">Inspección</span>
       <span class="ins-frame" id="ins-frame"></span>
-      <button id="ins-shot" class="pill" title="Captura del viewport con la selección dibujada">Capturar</button>
+      <button id="ins-shot" class="pill" title="Capturar el viewport con la selección dibujada; antes puedes añadir una nota">Capturar</button>
       <button id="ins-close" class="icon" title="Salir del modo inspección (Esc)">✕</button>
+    </div>
+    <div class="ins-note" id="ins-note-row" hidden>
+      <input id="ins-note" type="text" autocomplete="off" spellcheck="false"
+             placeholder="Qué está mal aquí · Esc cancela">
+      <button id="ins-note-go" title="Capturar con esta nota (⏎)">⏎</button>
     </div>
     <div id="ins-body"></div>
   </div>

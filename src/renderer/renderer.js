@@ -461,6 +461,10 @@ function onGuestMessage (p, channel, data) {
       insState.data = data.data
       insState.path = data.path
       dropInsLock()
+      /* La nota abierta describía el elemento anterior: al clicar otro se
+       * cierra en vez de heredarse, que es como se cuelan notas que no hablan
+       * de lo que sale en la imagen. */
+      closeInsNote()
       paintInspector()
       askPlatformFont(p)
       /* El globo al lado del cursor: una vez en la vida, en la primera
@@ -642,7 +646,7 @@ function variants (p) {
   return out
 }
 
-async function screenshotPanel (p, mode = 'full', withInspect = false) {
+async function screenshotPanel (p, mode = 'full', withInspect = false, note = '') {
   if (capturing) return
   if (!p.ready) { toast('El panel aún está cargando'); return }
   capturing = true
@@ -681,6 +685,10 @@ async function screenshotPanel (p, mode = 'full', withInspect = false) {
           hoverLabel: measured ? insState.hoverLabel : null,
           dist: measured ? insState.dist : null,
           why: measured ? insState.why : null,
+          /* La nota se escribe para la persona que va a arreglarlo, así que
+           * viaja tal cual y se dibuja arriba de la columna: es lo primero que
+           * se lee al abrir la imagen, antes que el selector y el CSS. */
+          note: (note || '').trim() || null,
           sections: window.PreviewerInspect.sections(insState.data)
         }
       : null
@@ -774,6 +782,27 @@ function dropInsSelection () {
 
 const inspector = $('#inspector')
 const insBody = $('#ins-body')
+const insNoteRow = $('#ins-note-row')
+const insNoteInput = $('#ins-note')
+
+/* La nota de la captura.
+ *
+ * El paso se pide al pulsar «Capturar» y no antes: un campo permanente en el
+ * panel sería una caja vacía más que mirar, y de las dos cosas que puedes
+ * querer hacer con el botón —capturar y capturar contando algo— la primera
+ * sigue siendo un Enter. Se abre vacía siempre: una nota del error anterior
+ * pegada en la captura del siguiente es peor que no tener nota, porque quien
+ * la lee se la cree. */
+function openInsNote () {
+  insNoteRow.hidden = false
+  insNoteInput.value = ''
+  insNoteInput.focus()
+}
+
+function closeInsNote () {
+  insNoteRow.hidden = true
+  insNoteInput.value = ''
+}
 
 function inspecting () {
   return insState.id ? state.panels.find((p) => p.id === insState.id) || null : null
@@ -828,6 +857,9 @@ function syncInspectScale () {
 function paintInspector () {
   const p = inspecting()
   inspector.hidden = !p
+  /* Lo que la nota describe es el elemento seleccionado: si cambia o se
+   * suelta, la nota escrita ya no habla de lo que va a salir en la imagen. */
+  if (!p || !insState.path) closeInsNote()
   if (!p) return
 
   $('#ins-frame').textContent = p.name
@@ -1772,7 +1804,25 @@ $('#ins-shot').addEventListener('click', () => {
   const p = inspecting()
   if (!p) return
   if (!insState.path) { toast('Clica primero un elemento del frame'); return }
-  screenshotPanel(p, 'viewport', true)
+  /* Con una captura en marcha no se abre la nota: la escribirías para que
+   * screenshotPanel la tirase por estar ocupado. */
+  if (capturing) return
+  // Primer clic: abre la nota. Segundo: captura con lo que haya escrito.
+  if (insNoteRow.hidden) { openInsNote(); return }
+  const note = insNoteInput.value
+  closeInsNote()
+  screenshotPanel(p, 'viewport', true, note)
+})
+
+/* El botón y el Enter son el mismo gesto, así que pasan por el mismo sitio. */
+$('#ins-note-go').addEventListener('click', () => $('#ins-shot').click())
+
+insNoteInput.addEventListener('keydown', (e) => {
+  /* Enter captura con nota o sin ella: el paso nuevo nunca puede dejarte sin
+   * la captura de siempre, sólo ofrecerte contar algo de camino. Lo mismo hace
+   * el botón ⏎ de al lado, para quien esté con el ratón. */
+  if (e.key === 'Enter') { e.preventDefault(); $('#ins-shot').click(); return }
+  if (e.key === 'Escape') { e.preventDefault(); closeInsNote() }
 })
 
 /* El panel se puede mover: es grande y el frame que estás mirando puede
