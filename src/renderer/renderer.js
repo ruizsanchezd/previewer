@@ -718,22 +718,24 @@ async function screenshotPanel (p, mode = 'full', withInspect = false, note = ''
 
     /* El aviso dice dónde está el archivo y poco más.
      *
-     * Lo único que se añade es lo que hace que la imagen no sea la que
-     * pediste: eso hay que decirlo antes de que se descubra al abrirla. El
-     * resto —la densidad, que es siempre @2x, y el techo de resolución de las
-     * imágenes de la página— se ha quitado: la densidad no cambia nunca y el
-     * techo lo cuenta la fila «Imagen» del panel de inspección, del elemento
-     * que hayas clicado y cuando lo preguntas. Repetirlo en cada captura sólo
-     * enseñaba a no leer el aviso, avisos útiles incluidos. */
+     * Sólo se añade lo que no se podía saber de antemano y hace que la imagen
+     * no sea la que pediste: recortada, sin el resalte, sin la columna. Son
+     * fallos raros y hay que decirlos antes de que se descubran al abrir el
+     * archivo.
+     *
+     * Lo que se ha ido, y por qué: la densidad, que es siempre @2x y por tanto
+     * no informa de nada; el techo de resolución de las imágenes de la página,
+     * que lo cuenta la fila «Imagen» del panel cuando lo preguntas; y la
+     * distancia sin fijar, que salía en casi toda captura —al ir hacia el
+     * botón el ratón reasigna la pareja medida— y que el panel ya dice mejor,
+     * con el pin al lado de la cifra y antes de capturar. Un aviso que sale
+     * siempre enseña a no leer el aviso, los tres de arriba incluidos. */
     const notes = []
     if (res.truncated) notes.push('recortada, la página es larguísima')
     if (inspectSpec && res.inspected === false) {
       notes.push('sin el resalte: el elemento no aparece igual al recargar la página')
     }
     if (inspectSpec && res.column === false) notes.push('sin la columna de datos')
-    if (inspectSpec && !measured && insState.dist) {
-      notes.push('sin la distancia: no estaba fijada, se fija con Mayúsculas + clic')
-    }
     toast(`Guardado en Descargas/previewer · ${res.width}×${res.height} · ` +
           `${(res.bytes / 1e6).toFixed(1)} MB` +
           (notes.length ? ` (${notes.join('; ')})` : ''),

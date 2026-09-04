@@ -324,8 +324,10 @@ propiedades en la franja, que siguen siendo válidas— y el aviso lo dice.
 hubiera, y la última que hay casi nunca es la que se quería: al salir del frame camino del
 botón, el puntero cruza media página y la reasigna a lo que pisó por el borde, así que la
 imagen salía con una caja magenta y unas cotas que nadie había pedido —en una captura cuyo
-destino es explicarle algo a otra persona—. Si había una medida a medias sin fijar, el
-aviso posterior lo dice en vez de dejar que se descubra al abrir el archivo.
+destino es explicarle algo a otra persona—. Que estaba a medias sin fijar lo dice el pin
+al lado de la cifra, en el panel y antes de capturar; el aviso posterior lo contaba también
+y se ha quitado, porque saltaba en casi toda captura por lo mismo que se acaba de explicar:
+el ratón deja una medida sin fijar sólo por haber pasado por encima.
 
 Dentro de la imagen el segundo elemento se dibuja siempre con **trazo continuo**, aunque en
 vivo estuviera en discontinuo: el discontinuo significa «aquí está el ratón», y en una
