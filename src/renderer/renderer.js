@@ -1896,9 +1896,13 @@ function syncChrome () {
 /* ----------------------------------------------------------- bootstrap */
 
 ;(async function boot () {
-  guestPreload = await window.previewer.guestPreloadPath()
-  inspectSource = await window.previewer.inspectSource()
   restore()
+  /* Se decide ya, antes de ceder el hilo al primer await: si no, Chromium
+   * puede pintar el primer fotograma con el aviso de "sin dispositivos"
+   * todavía visible, aunque haya paneles guardados de sobra. */
+  emptyState.hidden = state.panels.length > 0
+  guestPreload = await window.previewer.guestPreloadPath()
   syncChrome()
   render()
+  inspectSource = await window.previewer.inspectSource()
 })()

@@ -24,6 +24,7 @@ function createWindow () {
     backgroundColor: '#0b0c0e',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 14, y: 16 },
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -32,6 +33,7 @@ function createWindow () {
     }
   })
 
+  win.once('ready-to-show', () => win.show())
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'))
   win.on('closed', () => { win = null })
 }
