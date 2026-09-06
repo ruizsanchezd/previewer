@@ -1,6 +1,6 @@
 {
   "name": "previewer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Multi-device preview canvas with synchronised scroll, clicks and navigation",
   "main": "src/main.cjs",
   "scripts": {
