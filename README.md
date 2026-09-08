@@ -54,7 +54,7 @@ con cualquier URL: no dependemos de iframes ni de que la web permita ser embebid
 | `espacio` + arrastrar (o botón central) | Mover el lienzo |
 | Arrastrar sobre el fondo | Recuadro de selección; `⇧` suma a la selección |
 | `Esc` | Deseleccionar (en modo inspección: suelta lo fijado, luego la selección, luego sale) |
-| `Alt` señalando, en modo inspección | El elemento exacto bajo el cursor, sin heurística |
+| `⌘` señalando, en modo inspección | El elemento exacto bajo el cursor, sin heurística |
 | `⇧` + clic, en modo inspección | Fija el elemento contra el que se mide, para poder capturar la distancia |
 | `Enter` en la nota de la captura | Captura, con nota o sin ella (`Esc` cierra la nota sin capturar) |
 | Arrastrar el título de un panel | Mover ese panel, o toda la selección si está dentro |
@@ -219,9 +219,10 @@ seleccionar —cuando pasaba a significar algo— es cuando se iba de la pantall
   menús y no se propaga al resto de paneles. Sólo selecciona.
 - **`Esc` va por pasos**: suelta lo fijado, luego la selección y, a la última, sale del
   modo. Funciona igual con el foco dentro del frame o en el lienzo.
-- **`Alt` mientras señalas** salta la heurística y te da el elemento exacto bajo el
-  cursor. Por defecto se sube al elemento que *ves*: si un framework envuelve el texto de
-  un botón en tres capas invisibles, lo que quieres es el botón, no el `<span>` de dentro.
+- **`⌘` mientras señalas** salta la heurística y te da el elemento exacto bajo el
+  cursor —el mismo gesto que en Figma—. Por defecto se sube al elemento que *ves*: si un
+  framework envuelve el texto de un botón en tres capas invisibles, lo que quieres es el
+  botón, no el `<span>` de dentro.
 - **La etiqueta del resalte identifica, no describe.** Con el ratón encima ya estás viendo
   el elemento, así que sobra enumerarle las clases: en una web de utilidades salían cosas
   como `a.inline--block.bg-foreground.text-background…` tapando justo lo que querías

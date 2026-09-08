@@ -73,7 +73,7 @@
    *     a <p> is a layout box, and stealing the click from the <p> would hide
    *     the typography, which is the main reason to be here.
    *
-   * Alt/Option skips both and gives the literal deepest element.
+   * Cmd skips both and gives the literal deepest element.
    */
   function pick (x, y, raw) {
     let el = null

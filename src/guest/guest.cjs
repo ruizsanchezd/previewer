@@ -336,7 +336,7 @@ const insMove = (e) => {
   if (ins.lock) return
   ins.x = e.clientX
   ins.y = e.clientY
-  ins.raw = e.altKey
+  ins.raw = e.metaKey
   clearTimeout(ins.tail)
   ins.tail = setTimeout(insTrack, INS_MS + 5)
   const now = performance.now()
@@ -354,10 +354,10 @@ const insSwallow = (e) => {
   e.preventDefault()
   e.stopPropagation()
   if (e.type !== 'click') return
-  const found = inspect.pick(e.clientX, e.clientY, e.altKey)
+  const found = inspect.pick(e.clientX, e.clientY, e.metaKey)
   if (!found) return
 
-  /* Mayúsculas y no Opción: `alt` ya significa «el elemento literal, sin subir
+  /* Mayúsculas y no Cmd: `cmd` ya significa «el elemento literal, sin subir
    * al ancestro que comparte caja» en pick(), y ese matiz hace falta también
    * al fijar el segundo elemento. */
   if (e.shiftKey && ins.sel) {
