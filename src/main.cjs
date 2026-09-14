@@ -320,9 +320,15 @@ function inspectBlock (ins) {
         ? `<span style="display:inline-block;width:11px;height:11px;border-radius:2px;` +
           `background:${esc(row.swatch)};box-shadow:inset 0 0 0 1px #ffffff66;margin-right:6px"></span>`
         : ''
+      /* Sin dibujo y sin dos líneas: esta franja es la de repuesto y va a lo
+       * ancho, así que la variable se cuelga detrás del valor y ya. */
+      const token = row.token
+        ? `<span style="color:${row.token.loose ? '#d9a469' : '#93a9c9'};padding-left:7px">` +
+          `${esc(row.token.loose ? 'a mano · hay ' + row.token.name : row.token.name)}</span>`
+        : ''
       return `<div style="display:flex;gap:8px;align-items:baseline;padding:1px 0">` +
         `<span style="color:#5d646e;flex:0 0 96px">${esc(row.k)}</span>` +
-        `<span style="color:#e6e8ec;flex:1 1 auto;word-break:break-word">${swatch}${esc(row.v)}</span>` +
+        `<span style="color:#e6e8ec;flex:1 1 auto;word-break:break-word">${swatch}${esc(row.v)}${token}</span>` +
         `</div>`
     }).join('')
     return `<div style="break-inside:avoid;padding-bottom:16px">` +
@@ -367,12 +373,45 @@ function inspectBlock (ins) {
  * franja de arriba no se dibuja: sería la misma información dos veces. */
 const COLUMN_CSS_WIDTH = 380
 
+/* El mismo diagrama de caja que pinta el panel, con la misma decisión detrás
+ * —la toma `boxModel` en inspect.js— y el dibujo rehecho aquí porque esta
+ * columna se pinta en su propia ventana y no comparte la hoja de estilos.
+ *
+ * En una captura vale incluso más que en vivo: es la imagen que acaba en Slack
+ * y quien la mira no tiene el elemento delante para volver a medirlo. */
+function diagramHtml (row) {
+  const d = row.diagram
+  const SIDES = ['t', 'r', 'b', 'l']
+  let inner = `<div class="bm-c">${esc(d.w + ' × ' + d.h)}</div>`
+  for (const ring of d.rings.slice().reverse()) {
+    const values = d[ring].map((n, i) =>
+      `<span class="bm-v bm-${SIDES[i]}${n === 0 ? ' zero' : ''}">${esc(String(n))}</span>`
+    ).join('')
+    inner = `<div class="bm-ring bm-${ring}">` +
+      `<span class="bm-n">${esc(ring)}</span>${values}${inner}</div>`
+  }
+  const foot = row.token
+    ? `<div class="bm-foot"><span>padding</span>${tokenHtml(row.token)}</div>`
+    : ''
+  return `<div class="bm">${inner}${foot}</div>`
+}
+
+/* La variable, en la línea de debajo del valor. Aquí importa más que en el
+ * panel: la captura es lo que se manda, y quien la abre no tiene la página
+ * delante para ir a mirar de dónde salía ese color. */
+function tokenHtml (token) {
+  if (!token) return ''
+  const text = token.loose ? 'a mano · hay ' + token.name : token.name
+  return `<span class="var${token.loose ? ' loose' : ''}">${esc(text)}</span>`
+}
+
 function columnHtml (head, ins) {
   const mono = 'ui-monospace,SFMono-Regular,Menlo,monospace'
   const sans = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
 
   const sections = (ins.sections || []).map((sec) => {
     const rows = sec.rows.map((row) => {
+      if (row.diagram) return diagramHtml(row)
       const swatch = row.swatch
         ? `<span class="sw" style="background:${esc(row.swatch)}"></span>`
         : ''
@@ -380,7 +419,8 @@ function columnHtml (head, ins) {
         ? `<span class="tag${row.bad ? ' bad' : ''}">${esc(row.tag)}</span>`
         : ''
       return `<div class="row"><span class="k">${esc(row.k)}</span>` +
-        `<span class="v">${swatch}${esc(row.v)}${tag}</span></div>`
+        `<span class="v"><span class="vt">${swatch}${esc(row.v)}</span>` +
+        `${tag}${tokenHtml(row.token)}</span></div>`
     }).join('')
     return `<div class="sec"><div class="t">${esc(sec.title.toUpperCase())}</div>${rows}</div>`
   }).join('')
@@ -419,12 +459,37 @@ function columnHtml (head, ins) {
     .t{color:#8a919c;font-size:12px;letter-spacing:.08em;padding-bottom:4px}
     .row{display:flex;gap:10px;align-items:baseline;padding:1px 0}
     .k{color:#5d646e;flex:0 0 104px;font-size:14px}
-    .v{color:#e6e8ec;flex:1 1 auto;min-width:0;font-size:14px;word-break:break-word}
+    .v{color:#e6e8ec;flex:1 1 auto;min-width:0;font-size:14px;
+      display:flex;align-items:baseline;flex-wrap:wrap;gap:5px}
+    .vt{flex:0 1 auto;min-width:0;word-break:break-word}
+    .var{flex:0 0 100%;font-size:12px;line-height:1.4;color:#93a9c9;word-break:break-all}
+    .var.loose{color:#d9a469}
+    .bm-foot{display:flex;align-items:baseline;gap:7px;padding:7px 2px 0}
+    .bm-foot>span:first-child{flex:none;font-size:12px;color:#5d646e}
+    .bm-foot .var{flex:1 1 auto}
     .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;
       box-shadow:inset 0 0 0 1px #ffffff66;vertical-align:baseline}
     .tag{margin-left:6px;padding:1px 5px;border-radius:3px;background:#ffffff1f;
       color:#8a919c;font-size:12px}
     .tag.bad{background:#ff5f5633;color:#ff8f88}
+    .bm{padding:8px 0 4px}
+    .bm-ring{position:relative;padding:19px 26px;border-radius:6px}
+    .bm-margin{background:#7a552e2b;box-shadow:inset 0 0 0 1px #c9924e54}
+    .bm-border{background:#ffffff0a;box-shadow:inset 0 0 0 1px #ffffff1f}
+    .bm-padding{background:#3f6b452b;box-shadow:inset 0 0 0 1px #6fb07a54}
+    .bm-n{position:absolute;top:4px;left:7px;font-size:11px;letter-spacing:.04em}
+    .bm-margin>.bm-n{color:#d9a469}
+    .bm-border>.bm-n{color:#8a919c}
+    .bm-padding>.bm-n{color:#8cc596}
+    .bm-c{padding:9px 10px;border-radius:5px;background:#1e3865;
+      box-shadow:inset 0 0 0 1px #4c8dff5c;color:#a9c9ff;font-size:13px;
+      text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .bm-v{position:absolute;font-size:12px;line-height:1;color:#e6e8ec}
+    .bm-v.zero{color:#5d646e}
+    .bm-t{top:5px;left:50%;transform:translateX(-50%)}
+    .bm-b{bottom:5px;left:50%;transform:translateX(-50%)}
+    .bm-l{left:5px;top:50%;transform:translateY(-50%)}
+    .bm-r{right:5px;top:50%;transform:translateY(-50%)}
   </style></head><body>
     <div class="name">${esc(head.name)}</div>
     <div class="size">${esc(head.size)}</div>
@@ -888,7 +953,161 @@ function prettyFont (name) {
   return name.replace(/^\./, '').split('_')[0]
 }
 
-ipcMain.handle('platform-font', async (_e, { id, selector }) => {
+/* De qué variable sale cada valor.
+ *
+ * Una hoja de estilos dice `color: var(--color-text)` y para cuando la página
+ * está pintada eso ya es un `rgb(26, 26, 26)` y nadie puede saber de dónde
+ * venía: el navegador resuelve la variable antes de que el DOM la vea. Es la
+ * razón por la que hasta ahora había que abrir el inspector del navegador para
+ * comprobar si un color era el token que tocaba.
+ *
+ * El protocolo de DevTools sí lo sabe —es de donde sale el panel «Styles»— y
+ * devuelve las reglas *tal y como se escribieron*, con el `var()` sin resolver,
+ * incluyendo la cadena de herencia y las hojas de otro dominio. Ya teníamos la
+ * sesión abierta aquí para la fuente, así que es una llamada más en un viaje
+ * que ya se hacía.
+ *
+ * Qué propiedades se miran, y con qué atajos puede haberlas escrito alguien:
+ * `padding: var(--space-4)` es un `padding` en la regla y cuatro `padding-*`
+ * en el computado. */
+const TOKEN_PROPS = {
+  color: ['color'],
+  'background-color': ['background-color', 'background'],
+  'font-family': ['font-family', 'font'],
+  'font-size': ['font-size', 'font'],
+  'font-weight': ['font-weight', 'font'],
+  'line-height': ['line-height', 'font'],
+  'letter-spacing': ['letter-spacing'],
+  'border-top-left-radius': ['border-radius'],
+  'border-top-color': ['border-top-color', 'border-color', 'border-top', 'border'],
+  'padding-top': ['padding-top', 'padding'],
+  'row-gap': ['row-gap', 'gap'],
+  'column-gap': ['column-gap', 'gap']
+}
+
+/* Sólo se hereda lo que se hereda: buscar un `padding` en los padres daría el
+ * del contenedor, que no es el de este elemento ni tiene nada que ver. */
+const INHERITED = new Set([
+  'color', 'font-family', 'font-size', 'font-weight', 'line-height', 'letter-spacing'
+])
+
+/* `#1a1a1a` y `rgb(26, 26, 26)` son el mismo color y dos cadenas distintas, y
+ * la comparación se hace justo entre esas dos: una variable guarda el texto
+ * que se escribió y el computado siempre trae la forma larga. Sin esto, cada
+ * token escrito en hexadecimal —o sea, casi todos— quedaría sin detectar. */
+function normalise (value) {
+  const text = String(value == null ? '' : value).trim().toLowerCase().replace(/\s+/g, ' ')
+  const hex = text.match(/^#([0-9a-f]{3,8})$/)
+  if (!hex) return text.replace(/,\s*/g, ', ')
+  let d = hex[1]
+  if (d.length === 3 || d.length === 4) d = d.split('').map((c) => c + c).join('')
+  if (d.length !== 6 && d.length !== 8) return text
+  const n = (i) => parseInt(d.slice(i * 2, i * 2 + 2), 16)
+  if (d.length === 6) return `rgb(${n(0)}, ${n(1)}, ${n(2)})`
+  return `rgba(${n(0)}, ${n(1)}, ${n(2)}, ${Math.round((n(3) / 255) * 100) / 100})`
+}
+
+/* Todas las variables que aparecen en el valor escrito.
+ *
+ * Son varias más veces de las que parece, porque casi nadie escribe la
+ * propiedad larga: `border: 2px solid var(--color-linea)` lleva la variable
+ * dentro de un atajo, y `font: bold var(--tamano)/1.4 var(--familia)` lleva
+ * dos, cada una para una propiedad distinta. Cuál manda para la propiedad que
+ * estamos mirando lo decide después la comprobación contra el computado. */
+function varsIn (value) {
+  const out = []
+  const re = /var\(\s*(--[\w-]+)/g
+  let m
+  while ((m = re.exec(String(value || '')))) out.push(m[1])
+  return out
+}
+
+/* La declaración que gana para una propiedad, de mayor a menor precedencia.
+ *
+ * Importa el orden y no vale con «la primera que lleve un var()»: si alguien ha
+ * escrito el hexadecimal a mano encima de una regla que sí usaba la variable,
+ * mirar sólo los `var()` contaría justo lo contrario de lo que pasa. Se busca
+ * quién gana y después se mira si ese lleva variable.
+ *
+ * El protocolo entrega las reglas de menor a mayor precedencia —la specificity
+ * ya resuelta por el propio navegador—, así que ganar es ir del final al
+ * principio, con lo marcado `!important` por delante de todo lo demás. */
+function winner (styles, names) {
+  const pick = (important) => {
+    for (const style of styles) {
+      const found = (style.cssProperties || []).filter((p) =>
+        p.text && !p.disabled && names.indexOf(p.name) > -1 && !!p.important === important)
+      if (found.length) return found[found.length - 1].value
+    }
+    return null
+  }
+  return pick(true) || pick(false)
+}
+
+/* Las hojas de un elemento, de mayor a menor precedencia y en un solo array. */
+function stack (match) {
+  const own = (match.matchedCSSRules || []).map((m) => m.rule.style).reverse()
+  return (match.inlineStyle ? [match.inlineStyle] : []).concat(own)
+}
+
+function readTokens (match, computed) {
+  const value = {}
+  const vars = {}
+  /* El valor sin tocar, para enseñarlo: `normalise` pasa todo a minúsculas
+   * para poder comparar, y una familia tipográfica enseñada como «inter» en
+   * vez de «Inter» canta. Se compara con uno y se lee el otro. */
+  const raw = {}
+  for (const p of computed) {
+    if (p.name.indexOf('--') !== 0) { value[p.name] = normalise(p.value); continue }
+    vars[p.name] = normalise(p.value)
+    raw[p.name] = String(p.value || '').trim()
+  }
+  if (!Object.keys(vars).length) return null
+
+  const own = stack(match)
+  /* `inherited[0]` es el padre, y de ahí hacia arriba. */
+  const up = (match.inherited || []).map(stack)
+  const out = {}
+
+  for (const prop of Object.keys(TOKEN_PROPS)) {
+    const painted = value[prop]
+    if (painted == null) continue
+    const names = TOKEN_PROPS[prop]
+
+    let declared = winner(own, names)
+    if (declared == null && INHERITED.has(prop)) {
+      for (const level of up) {
+        declared = winner(level, names)
+        if (declared != null) break
+      }
+    }
+
+    if (declared == null) continue
+
+    const used = varsIn(declared)
+    if (used.length) {
+      /* La red de seguridad, y la que además elige entre las varias de un
+       * atajo: vale la que resuelve a lo que se está viendo. Si ninguna
+       * resuelve a eso, la regla que hemos elegido no es la que manda, y una
+       * atribución equivocada manda a alguien a cambiar la línea que no era.
+       * Con dos que cuadren tampoco se puede decir cuál: callar las dos veces,
+       * que es el mismo criterio que el de las cotas. */
+      const fits = used.filter((n) => vars[n] != null && vars[n] === painted)
+      if (fits.length === 1) out[prop] = { name: fits[0], value: raw[fits[0]] }
+      continue
+    }
+
+    /* El valor a mano que coincide con un token: el color es el correcto hoy y
+     * el día que el token cambie éste no cambiará. Es el fallo que se busca al
+     * revisar un sistema de diseño y el único que no se ve mirando la
+     * pantalla, porque hoy se ve exactamente igual de bien. */
+    const same = Object.keys(vars).find((n) => vars[n] === painted)
+    if (same) out[prop] = { name: same, value: raw[same], loose: true }
+  }
+  return Object.keys(out).length ? out : null
+}
+
+ipcMain.handle('inspect-details', async (_e, { id, selector }) => {
   const wc = webContents.fromId(id)
   if (!wc || wc.isDestroyed() || !selector) return null
   let enabled = false
@@ -910,7 +1129,19 @@ ipcMain.handle('platform-font', async (_e, { id, selector }) => {
     const best = (fonts || [])
       .filter((f) => f.familyName && !/emoji/i.test(f.familyName))
       .sort((a, b) => (b.glyphCount || 0) - (a.glyphCount || 0))[0]
-    return best ? prettyFont(best.familyName) : null
+
+    /* Las variables no son motivo para perder la fuente: van en su propio
+     * try, y una página sin tokens sencillamente no trae esta parte. */
+    let tokens = null
+    try {
+      const [match, style] = await Promise.all([
+        wc.debugger.sendCommand('CSS.getMatchedStylesForNode', { nodeId: found.nodeId }),
+        wc.debugger.sendCommand('CSS.getComputedStyleForNode', { nodeId: found.nodeId })
+      ])
+      tokens = readTokens(match, style.computedStyle || [])
+    } catch (_) {}
+
+    return { font: best ? prettyFont(best.familyName) : null, tokens }
   } catch (_) {
     return null
   } finally {
@@ -934,5 +1165,6 @@ ipcMain.handle('guest-preload-path', () => {
   return pathToFileURL(path.join(__dirname, 'guest', 'guest.cjs')).href
 })
 
-/* Exported so the capture path can be exercised without the UI. */
-module.exports = { capturePanel }
+/* Exported so the capture path, the column and the token reading can be
+ * exercised without the UI. */
+module.exports = { capturePanel, columnHtml, readTokens }

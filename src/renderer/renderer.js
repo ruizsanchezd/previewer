@@ -466,7 +466,7 @@ function onGuestMessage (p, channel, data) {
        * de lo que sale en la imagen. */
       closeInsNote()
       paintInspector()
-      askPlatformFont(p)
+      askDetails(p)
       /* El globo al lado del cursor: una vez en la vida, en la primera
        * selección, y nunca más. Lo decide el host porque es quien recuerda
        * —el frame se recarga y olvida—; el frame sólo lo pinta, que es donde
@@ -917,24 +917,29 @@ function paintInspector () {
     title.className = 'ins-sec-title'
     title.textContent = sec.title
     box.appendChild(title)
-    for (const row of sec.rows) box.appendChild(insRow(row))
+    for (const row of sec.rows) {
+      box.appendChild(row.diagram ? insDiagram(row) : insRow(row))
+    }
     insBody.appendChild(box)
   }
 }
 
-/* La tipografía real se pregunta al proceso principal, que es quien puede
- * hablar por el protocolo de DevTools, y tarda unos milisegundos: el panel se
- * pinta ya y la fila se rellena cuando llega. Si para entonces has clicado
- * otra cosa, la respuesta se tira. */
-async function askPlatformFont (p) {
-  if (!insState.data || !insState.data.text || !insState.path) return
+/* Lo que sólo sabe el protocolo de DevTools: la tipografía que se ha pintado
+ * de verdad y de qué variable sale cada valor. Las dos cosas se preguntan en el
+ * mismo viaje al proceso principal —es la misma sesión y el mismo nodo— y
+ * tardan unos milisegundos: el panel se pinta ya y se repinta cuando llegan. Si
+ * para entonces has clicado otra cosa, la respuesta se tira. */
+async function askDetails (p) {
+  if (!insState.data || !insState.path) return
   const forPath = insState.path
-  let name = null
+  let out = null
   try {
-    name = await window.previewer.platformFont(p.webview.getWebContentsId(), forPath)
+    out = await window.previewer.inspectDetails(p.webview.getWebContentsId(), forPath)
   } catch (_) {}
-  if (!name || insState.path !== forPath || !insState.data.text) return
-  insState.data.text.rendered = name
+  if (!out || insState.path !== forPath || !insState.data) return
+  if (out.font && insState.data.text) insState.data.text.rendered = out.font
+  insState.data.tokens = out.tokens || null
+  if (!out.font && !out.tokens) return
   paintInspector()
 }
 
@@ -965,6 +970,92 @@ function paintDistance () {
   const why = el.querySelector('.ins-dist-why')
   why.hidden = !insState.why
   why.textContent = insState.why || ''
+}
+
+/* La variable de la que sale un valor, en su propia línea debajo.
+ *
+ * Debajo y no al lado: un `--color-surface-raised` no cabe junto a un hexa en
+ * un panel de 340px, y partido por la mitad no se puede ni leer ni copiar.
+ *
+ * Dos lecturas, y la segunda es la que justifica todo esto: en azul apagado,
+ * «esto sale del sistema» —el caso bueno, que no hay que mirar—; en ámbar,
+ * «el valor está escrito a mano y hay un token con ese mismo valor», que es el
+ * fallo que no se ve en la pantalla porque hoy se ve exactamente igual, y el
+ * día que el token cambie éste se quedará atrás. */
+function insToken (token) {
+  /* Un `span` y no un `button`: la fila entera ya es un botón —copia el valor—
+   * y un botón dentro de otro es anidamiento inválido. El clic se queda aquí,
+   * así que pulsar el nombre copia la variable y no el valor. */
+  const el = document.createElement('span')
+  el.className = 'ins-var' + (token.loose ? ' loose' : '')
+  el.textContent = token.loose ? 'a mano · hay ' + token.name : token.name
+  el.title = token.loose
+    ? 'El valor está escrito directamente y coincide con ' + token.name +
+      ' (' + token.value + ').\nCopiar «var(' + token.name + ')»'
+    : token.name + ': ' + token.value + '\nCopiar «var(' + token.name + ')»'
+  el.addEventListener('click', (e) => {
+    e.stopPropagation()
+    copyValue('var(' + token.name + ')')
+  })
+  return el
+}
+
+/* El diagrama de la caja: anillos anidados, de dentro hacia fuera, con el
+ * número de cada lado pegado a su lado. Qué anillos hay y qué mide cada uno lo
+ * decide `boxModel` en inspect.js; aquí sólo se pinta. */
+const BM_SIDES = ['t', 'r', 'b', 'l']
+
+function insDiagram (row) {
+  const d = row.diagram
+  let node = document.createElement('div')
+  node.className = 'ins-bm-c'
+  node.textContent = d.w + ' × ' + d.h
+
+  /* `rings` viene de fuera adentro y se envuelve al revés: el padding es el
+   * primero en abrazar al contenido y el margen el último de todos. */
+  for (const ring of d.rings.slice().reverse()) {
+    const wrap = document.createElement('div')
+    wrap.className = 'ins-bm-ring ins-bm-' + ring
+
+    const name = document.createElement('span')
+    name.className = 'ins-bm-n'
+    name.textContent = ring
+    wrap.appendChild(name)
+
+    d[ring].forEach((n, i) => {
+      const v = document.createElement('button')
+      v.className = 'ins-bm-v ins-bm-' + BM_SIDES[i] + (n === 0 ? ' zero' : '')
+      v.textContent = String(n)
+      v.title = 'Copiar «' + n + 'px»'
+      v.addEventListener('click', () => copyValue(n + 'px'))
+      wrap.appendChild(v)
+    })
+
+    wrap.appendChild(node)
+    node = wrap
+  }
+
+  const box = document.createElement('div')
+  box.className = 'ins-bm'
+  box.appendChild(node)
+  /* Al pie y no dentro de ningún anillo: habla del padding entero, y metido en
+   * el marco del padding competiría por el sitio con sus cuatro números. */
+  if (row.token) {
+    const foot = document.createElement('div')
+    foot.className = 'ins-bm-foot'
+    const k = document.createElement('span')
+    k.textContent = 'padding'
+    foot.append(k, insToken(row.token))
+    box.appendChild(foot)
+  }
+  return box
+}
+
+async function copyValue (text) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast('Copiado: ' + text)
+  } catch (_) { toast('No se pudo copiar al portapapeles') }
 }
 
 /* Cada valor es un botón: el gesto que sigue a leer un hex o un tamaño es
@@ -998,14 +1089,10 @@ function insRow (row) {
     tag.textContent = row.tag
     v.appendChild(tag)
   }
+  if (row.token) v.appendChild(insToken(row.token))
 
   el.append(k, v)
-  el.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(row.v)
-      toast('Copiado: ' + row.v)
-    } catch (_) { toast('No se pudo copiar al portapapeles') }
-  })
+  el.addEventListener('click', () => copyValue(row.v))
   return el
 }
 

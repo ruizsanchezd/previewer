@@ -331,6 +331,30 @@
     }
   }
 
+  /* Los cuatro lados de un anillo en números sueltos, que es lo que necesita
+   * un dibujo. `sideList` sigue existiendo y sigue dando la misma medida en
+   * texto: es lo que puede leer quien no dibuja cajas. */
+  function sides (cs, prefix, suffix) {
+    return ['top', 'right', 'bottom', 'left']
+      .map((s) => Math.round((parseFloat(cs[prefix + '-' + s + (suffix || '')]) || 0) * 10) / 10)
+  }
+
+  /* La caja por dentro: el contenido va en el centro y cada anillo alrededor.
+   * El rect es siempre borde incluido, así que el contenido es lo que queda al
+   * descontar borde y padding. */
+  function model (cs, r) {
+    const border = sides(cs, 'border', '-width')
+    const padding = sides(cs, 'padding')
+    const size = (n) => Math.round(n * 10) / 10
+    return {
+      margin: sides(cs, 'margin'),
+      border,
+      padding,
+      w: size(Math.max(0, r.width - border[1] - border[3] - padding[1] - padding[3])),
+      h: size(Math.max(0, r.height - border[0] - border[2] - padding[0] - padding[2]))
+    }
+  }
+
   function radius (cs) {
     const v = ['top-left', 'top-right', 'bottom-right', 'bottom-left']
       .map((c) => cs['border-' + c + '-radius'])
@@ -423,6 +447,7 @@
         position: cs.position === 'static' ? null : cs.position,
         padding: sideList(cs, 'padding'),
         margin: sideList(cs, 'margin'),
+        model: model(cs, r),
         gap: cs.display.indexOf('flex') >= 0 || cs.display.indexOf('grid') >= 0
           ? (parseFloat(cs.gap) ? cs.gap : null) : null,
         radius: radius(cs),
@@ -519,6 +544,47 @@
     return data
   }
 
+  /* El diagrama de la caja, al estilo del de unas DevTools.
+   *
+   * `padding: 12px 12px 12px 28px` es correcto y hay que contar con los dedos
+   * para saber cuál de los cuatro es el de la izquierda. Dibujado, no hay que
+   * contar nada: el número está en el lado del que habla.
+   *
+   * Sale sólo cuando hay padding o margen, que es lo que viene a desambiguar.
+   * Un elemento con sólo un borde no tiene cuatro lados que confundir, y el
+   * grosor por lado ya lo cuenta la fila «Borde» de la sección de color. El
+   * anillo del borde se dibuja de todas formas cuando existe, porque separa el
+   * padding del margen y sin él las dos medidas se leen pegadas.
+   *
+   * Los anillos que están a cero no se dibujan: tres marcos de ceros alrededor
+   * del único número que dice algo es justo el ruido que veníamos a quitar. */
+  function boxModel (data) {
+    const m = data && data.box && data.box.model
+    if (!m) return null
+    const has = (ring) => m[ring].some((n) => n !== 0)
+    if (!has('padding') && !has('margin')) return null
+    return {
+      rings: ['margin', 'border', 'padding'].filter(has),
+      margin: m.margin,
+      border: m.border,
+      padding: m.padding,
+      w: m.w,
+      h: m.h
+    }
+  }
+
+  /* De qué variable sale cada fila.
+   *
+   * `data.tokens` no lo calcula este archivo: lo trae el proceso principal por
+   * el protocolo de DevTools, que es el único que sabe lo que decía el CSS
+   * antes de que el navegador resolviera los `var()` (ver readTokens en
+   * main.cjs). Llega unos milisegundos después que el resto y el panel se
+   * repinta; aquí sólo se reparte a la fila que le toca, para que la columna de
+   * la captura enseñe exactamente lo mismo sin decidirlo por su cuenta. */
+  function tokenFor (data, prop) {
+    return (data.tokens && data.tokens[prop]) || null
+  }
+
   /* Display groups. The renderer paints these as DOM and the capture writes
    * them into the info strip, so the grouping and the wording are decided
    * once, here, and the two never drift apart. */
@@ -526,10 +592,30 @@
     if (!data) return []
     const out = []
     const box = [{ k: 'Tamaño', v: data.box.w + ' × ' + data.box.h }]
-    if (data.box.padding) box.push({ k: 'Padding', v: data.box.padding })
-    if (data.box.margin) box.push({ k: 'Margin', v: data.box.margin })
-    if (data.box.gap) box.push({ k: 'Gap', v: data.box.gap })
-    if (data.box.radius) box.push({ k: 'Radio', v: data.box.radius })
+    /* Una sola fila para el padding y el margen, con el dibujo dentro y la
+     * misma medida en texto: quien sepa pintarlo pinta la caja, quien no
+     * —la franja ancha de una captura— imprime la línea de siempre, y lo que
+     * se cuenta se decide aquí una vez para los dos. */
+    const diagram = boxModel(data)
+    if (diagram) {
+      /* El token del padding sólo cuando los cuatro lados miden lo mismo: se
+       * lee del lado de arriba, y con lados distintos explicaría uno solo
+       * mientras el pie del dibujo parece hablar de los cuatro. */
+      const even = diagram.padding.every((n) => n === diagram.padding[0])
+      box.push({
+        k: 'Espaciado',
+        v: [
+          data.box.padding ? 'padding ' + data.box.padding : null,
+          data.box.margin ? 'margin ' + data.box.margin : null
+        ].filter(Boolean).join(' · '),
+        diagram,
+        token: even ? tokenFor(data, 'padding-top') : null
+      })
+    }
+    if (data.box.gap) box.push({ k: 'Gap', v: data.box.gap, token: tokenFor(data, 'row-gap') })
+    if (data.box.radius) {
+      box.push({ k: 'Radio', v: data.box.radius, token: tokenFor(data, 'border-top-left-radius') })
+    }
     /* `display: block` y `position: static` son el valor por defecto de casi
      * todo: una fila que casi nunca dice nada es una fila que se salta.
      *
@@ -557,20 +643,44 @@
            * «Helvetica [-apple-system]» se lee como «pediste eso y te han
            * dado esto», que es justo el fallo que se quiere ver. */
           data.text.rendered && data.text.rendered !== data.text.declared
-            ? { k: 'Familia', v: data.text.rendered, tag: data.text.declared, note: data.text.stack }
-            : { k: 'Familia', v: data.text.rendered || data.text.family, note: data.text.stack },
-          { k: 'Tamaño', v: data.text.size },
-          { k: 'Interlineado', v: data.text.lineHeight },
-          { k: 'Peso', v: data.text.weight },
-          { k: 'Espaciado', v: data.text.letterSpacing }
+            ? {
+                k: 'Familia',
+                v: data.text.rendered,
+                tag: data.text.declared,
+                note: data.text.stack,
+                token: tokenFor(data, 'font-family')
+              }
+            : {
+                k: 'Familia',
+                v: data.text.rendered || data.text.family,
+                note: data.text.stack,
+                token: tokenFor(data, 'font-family')
+              },
+          { k: 'Tamaño', v: data.text.size, token: tokenFor(data, 'font-size') },
+          { k: 'Interlineado', v: data.text.lineHeight, token: tokenFor(data, 'line-height') },
+          { k: 'Peso', v: data.text.weight, token: tokenFor(data, 'font-weight') },
+          { k: 'Espaciado', v: data.text.letterSpacing, token: tokenFor(data, 'letter-spacing') }
         ].concat(data.text.transform ? [{ k: 'Transform', v: data.text.transform }] : [])
       })
     }
 
     const colors = []
-    if (data.colors.text) colors.push({ k: 'Texto', v: data.colors.text, swatch: data.colors.text })
-    if (data.colors.bg) colors.push({ k: 'Fondo', v: data.colors.bg, swatch: data.colors.bgRaw })
-    else if (data.colors.inherited) {
+    if (data.colors.text) {
+      colors.push({
+        k: 'Texto',
+        v: data.colors.text,
+        swatch: data.colors.text,
+        token: tokenFor(data, 'color')
+      })
+    }
+    if (data.colors.bg) {
+      colors.push({
+        k: 'Fondo',
+        v: data.colors.bg,
+        swatch: data.colors.bgRaw,
+        token: tokenFor(data, 'background-color')
+      })
+    } else if (data.colors.inherited) {
       colors.push({
         k: 'Fondo',
         v: data.colors.inherited.value,
@@ -579,7 +689,14 @@
         swatch: data.colors.inherited.raw
       })
     }
-    if (data.border) colors.push({ k: 'Borde', v: data.border, swatch: data.borderRaw })
+    if (data.border) {
+      colors.push({
+        k: 'Borde',
+        v: data.border,
+        swatch: data.borderRaw,
+        token: tokenFor(data, 'border-top-color')
+      })
+    }
     if (data.colors.image) colors.push({ k: 'Imagen de fondo', v: data.colors.image })
     if (data.shadow) colors.push({ k: 'Sombra', v: data.shadow })
     if (data.contrast) {
@@ -1077,5 +1194,5 @@
     if (el) el.remove()
   }
 
-  return { resolve, pick, read, sections, label, overlay, hide, clear }
+  return { resolve, pick, read, sections, boxModel, label, overlay, hide, clear }
 })

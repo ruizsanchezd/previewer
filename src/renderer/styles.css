@@ -566,11 +566,43 @@ button:active { background: #ffffff14; }
   min-width: 0;
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: 5px;
   font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--text);
   word-break: break-word;
 }
+
+/* La variable de la que sale el valor. Ocupa la línea entera —`flex-basis`
+ * al 100% dentro de una fila que envuelve— porque un nombre de token es largo
+ * y partido no sirve para nada. */
+.ins-var {
+  flex: 0 0 100%;
+  text-align: left;
+  padding: 0;
+  font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #93a9c9;
+  word-break: break-all;
+  cursor: pointer;
+}
+.ins-var:hover { color: #b9cbe4; text-decoration: underline; }
+/* Ámbar y no rojo: no está roto, se ve igual de bien hoy. Lo que pasa es que
+ * no va a enterarse el día que el token cambie. */
+.ins-var.loose { color: #d9a469; }
+.ins-var.loose:hover { color: #edbd85; }
+
+.ins-bm-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 2px 0;
+}
+.ins-bm-foot > span {
+  flex: none;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.ins-bm-foot .ins-var { flex: 1 1 auto; }
 .ins-tag {
   flex: none;
   padding: 1px 4px;
@@ -589,6 +621,72 @@ button:active { background: #ffffff14; }
   box-shadow: inset 0 0 0 1px #ffffff2b;
   transform: translateY(1px);
 }
+
+/* El diagrama de la caja.
+ *
+ * Cada número en el lado del que habla, que es toda la gracia: `12px 12px 12px
+ * 28px` obliga a contar con los dedos y esto no obliga a nada.
+ *
+ * Los tonos son los de siempre en esta clase de dibujo —el margen cálido, el
+ * padding verde— porque es un lenguaje que ya se sabe de memoria, pero
+ * rebajados hasta donde el panel es oscuro: un relleno tenue y el color de
+ * verdad sólo en el rótulo, para que el bloque no se convierta en un semáforo
+ * al lado de unas filas de texto gris. */
+.ins-bm { padding: 7px 2px 3px; }
+
+.ins-bm-ring {
+  position: relative;
+  padding: 15px 21px;
+  border-radius: 5px;
+}
+.ins-bm-margin  { background: #7a552e2b; box-shadow: inset 0 0 0 1px #c9924e54; }
+.ins-bm-border  { background: #ffffff0a; box-shadow: inset 0 0 0 1px #ffffff1f; }
+.ins-bm-padding { background: #3f6b452b; box-shadow: inset 0 0 0 1px #6fb07a54; }
+
+.ins-bm-n {
+  position: absolute;
+  top: 3px;
+  left: 6px;
+  font-size: 9px;
+  letter-spacing: .04em;
+}
+.ins-bm-margin  > .ins-bm-n { color: #d9a469; }
+.ins-bm-border  > .ins-bm-n { color: var(--text-dim); }
+.ins-bm-padding > .ins-bm-n { color: #8cc596; }
+
+/* El contenido: lo mismo que `Tamaño` unas líneas más arriba pero sin el borde
+ * ni el padding, que es la medida que se busca cuando lo que se quiere saber
+ * es cuánto sitio le queda de verdad al texto. */
+.ins-bm-c {
+  padding: 7px 8px;
+  border-radius: 4px;
+  background: var(--accent-dim);
+  box-shadow: inset 0 0 0 1px #4c8dff5c;
+  font: 11px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #a9c9ff;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Botones como el resto de valores del panel: lo que sigue a leer un 28 es
+ * pegarlo en otro sitio. */
+.ins-bm-v {
+  position: absolute;
+  padding: 1px 3px;
+  border-radius: 3px;
+  font: 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text);
+}
+.ins-bm-v:hover { background: #ffffff1f; }
+/* Un cero es un dato —confirma que ahí no hay nada— pero nunca es el dato que
+ * se venía a mirar: apagado, la vista cae sola en los que sí. */
+.ins-bm-v.zero { color: var(--text-faint); }
+.ins-bm-t { top: 3px; left: 50%; transform: translateX(-50%); }
+.ins-bm-b { bottom: 3px; left: 50%; transform: translateX(-50%); }
+.ins-bm-l { left: 3px; top: 50%; transform: translateY(-50%); }
+.ins-bm-r { right: 3px; top: 50%; transform: translateY(-50%); }
 
 /* popover menus */
 

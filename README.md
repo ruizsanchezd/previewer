@@ -99,7 +99,14 @@ se copia.
 
 Lo que sale, y por qué eso y no la lista entera de propiedades computadas:
 
-- **Caja** — tamaño, padding, margin, gap y radio, y en un contenedor de flex o grid
+- **Caja** — tamaño, y el **padding y el margen dibujados**, no escritos: `padding: 12px
+  12px 12px 28px` es correcto y hay que contar con los dedos para saber cuál de los cuatro
+  es el de la izquierda, mientras que en el diagrama cada número está en el lado del que
+  habla. Es el mismo dibujo de anillos anidados de unas DevTools, con el contenido en el
+  centro, y sale **sólo cuando hay padding o margen**, que es lo que viene a desambiguar;
+  los anillos que están a cero no se dibujan, porque tres marcos de ceros alrededor del
+  único número que dice algo son justo el ruido que se venía a quitar. También gap y radio,
+  y en un contenedor de flex o grid
   también **cómo reparte el sitio**: dirección, `justify`/`align`, y los anchos reales de
   las columnas de un grid (el computado son píxeles, no el `1fr` que se escribió, que es
   justo lo que hace falta para comprobar si una columna mide lo que debía). Si el elemento
@@ -244,8 +251,72 @@ seleccionar —cuando pasaba a significar algo— es cuando se iba de la pantall
 - El resalte **no tiñe** el elemento seleccionado, sólo lo bordea: un velo de color encima
   falsearía justo el color que la captura va a demostrar.
 
-Lo único que se inyecta en la página es una capa de `<div>`s que se borra al salir; las
-propiedades son valores computados, así que no hay que interpretar el CSS de nadie.
+Lo único que se inyecta en la página es una capa de `<div>`s que se borra al salir; los
+valores son los computados, así que no hay que interpretar el CSS de nadie. El nombre de
+la variable de la que sale cada uno es la única excepción, y va por otro camino: lo cuenta
+la sección siguiente.
+
+### De qué variable sale cada valor
+
+Un panel que sólo enseña `#1a1a1a` y `16px` te obliga a abrir el inspector del navegador
+igualmente, porque la pregunta de una revisión no es qué color es: es **si está puesto el
+token que tocaba**. Así que junto a cada valor, en la línea de debajo, va el nombre de la
+variable de la que sale.
+
+```
+Texto          #1a1a1a
+               --color-text
+Tamaño         18px
+               --text-lg
+```
+
+Debajo y no al lado porque un `--color-surface-raised` no cabe junto a un hexadecimal en
+un panel de 340px, y partido por la mitad no se puede ni leer ni copiar. Al pulsarlo se
+copia `var(--color-text)`, ya escrito para pegar.
+
+**El caso que justifica todo esto es el otro**: cuando el valor está escrito a mano y
+existe un token con ese mismo valor, lo dice en ámbar.
+
+```
+Texto          #1a1a1a
+               a mano · hay --color-text
+```
+
+Alguien escribió el hexadecimal en vez de la variable. Hoy se ve exactamente igual de
+bien —por eso es el único fallo de sistema de diseño que **no se ve mirando la pantalla**—
+y el día que el token cambie, éste se quedará atrás. Va en ámbar y no en rojo porque no
+está roto: está desconectado.
+
+#### Por qué esto hace falta un rodeo
+
+Cuando el navegador pinta la página, `var(--color-text)` ya es un `rgb(26, 26, 26)` y la
+variable de la que venía **se ha perdido**: no hay ninguna API del DOM que la recuerde, y
+por eso el panel no podía contarlo por su cuenta. Lo sabe el protocolo de DevTools, que es
+de donde sale el panel «Styles» del navegador: devuelve las reglas **tal y como se
+escribieron**, con el `var()` sin resolver, la cadena de herencia entera y también las
+hojas servidas desde otro dominio. Ya había una sesión abierta contra cada panel para
+preguntar la tipografía real, así que esto es una llamada más en un viaje que ya se hacía:
+ni un proceso nuevo, ni una dependencia, unos milisegundos en el clic.
+
+Como el resto del inspector, **si no cuadra se calla**:
+
+- Se busca **qué declaración gana**, y después si ésa lleva variable. Al revés —buscar el
+  primer `var()` que aparezca— un hexadecimal escrito a mano encima de una regla que sí
+  usaba la variable contaría justo lo contrario de lo que pasa.
+- La variable candidata tiene que **resolver a lo que se está viendo**. Si no, es que la
+  regla elegida no era la que mandaba, y se calla. Esto es lo que deja acertar también
+  dentro de un atajo: en `border: 2px solid var(--color-linea)` la variable va a mitad de
+  la declaración, y la que vale es la que da el color computado.
+- Con dos variables que cuadren igual de bien, tampoco se dice ninguna.
+
+Lo que no puede decirte es si la variable aplicada es la **correcta**: el panel te dirá que
+ahí hay un `--color-text-secondary`, y si eso tenía que haber sido el primario lo decides
+tú mirándolo. Lo que se ahorra es el viaje de salir de la app para averiguar cuál está
+puesta.
+
+Todo esto **sale también en la captura**, en la columna de datos, que es donde más sirve:
+quien abre la imagen en Slack no tiene la página delante para ir a comprobar de dónde
+salía ese color.
 
 ## Screenshot
 
