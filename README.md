@@ -274,12 +274,64 @@ Debajo y no al lado porque un `--color-surface-raised` no cabe junto a un hexade
 un panel de 340px, y partido por la mitad no se puede ni leer ni copiar. Al pulsarlo se
 copia `var(--color-text)`, ya escrito para pegar.
 
-**El caso que justifica todo esto es el otro**: cuando el valor está escrito a mano y
-existe un token con ese mismo valor, lo dice en ámbar.
+Del nombre se enseñan **los dos últimos tramos**: de
+`--wp--preset--color--ds-content-high` sale `--color--ds-content-high`, porque
+`--wp--preset` se repite igual en todos los tokens del sistema y dentro del panel no
+distingue nada. Dos tramos y no uno, que fue lo primero que se probó: `ds-content-high` se
+explica solo, pero de `--wp--custom--spacing--md` quedaba `--md`, que es quedarse sin saber
+md de qué. El nombre entero está en el tooltip, y es lo que se copia.
+
+### El estilo, y no sus piezas
+
+Un estilo de texto en Figma —`body/xs`— es **una sola cosa** que lleva dentro el tamaño, el
+peso y la familia. En CSS no existe tal cosa: lo más parecido es un puñado de variables que
+comparten raíz.
 
 ```
-Texto          #1a1a1a
-               a mano · hay --color-text
+--wp--custom--typography--text-label-md--font-size
+--wp--custom--typography--text-label-md--line-height
+--wp--custom--typography--text-label-md--font-weight
+```
+
+Enseñar esas tres debajo de sus tres filas era decir tres veces lo mismo: lo que cambia
+entre ellas —`font-size`, `line-height`— ya lo dice el nombre de la fila que tienen al
+lado, y lo único que informa, `text-label-md`, quedaba enterrado y repetido en seis líneas.
+Así que **la raíz se dice una vez y arriba**, y las piezas se callan:
+
+```
+TIPOGRAFÍA
+Estilo         text-label-md
+Familia        Outfit
+Tamaño         16px
+Interlineado   24px (1.5)
+Peso           600
+```
+
+Si el estilo está puesto, sus piezas están bien por definición: no hay nada que mirar ahí
+abajo. Hacen falta **dos** propiedades con la misma raíz para llamarlo estilo; con una sola,
+la raíz es una coincidencia del nombre y no una prueba de que haya un estilo detrás.
+
+Y con la raíz localizada se puede señalar **lo que se sale**, que sin ella era imposible:
+
+```
+Estilo         text-title-sm
+Peso           500
+               fuera de text-title-sm · dice 700
+```
+
+Alguien pisó el peso del estilo. Las dos maneras de salirse no dicen lo mismo y se
+distinguen: `fuera de … · dice 700` es que el estilo pide otra cosa, y `a mano · lo trae
+text-title-sm` es que el valor es el correcto pero escrito suelto, que hoy no se nota y el
+día que el estilo cambie sí.
+
+### El valor a mano que coincide con un token
+
+Cuando el valor está escrito directamente y existe un token con ese mismo valor, lo dice en
+ámbar.
+
+```
+Texto          #001745
+               a mano · hay --color--ds-content-high
 ```
 
 Alguien escribió el hexadecimal en vez de la variable. Hoy se ve exactamente igual de
@@ -287,7 +339,17 @@ bien —por eso es el único fallo de sistema de diseño que **no se ve mirando 
 y el día que el token cambie, éste se quedará atrás. Va en ámbar y no en rojo porque no
 está roto: está desconectado.
 
-#### Por qué esto hace falta un rodeo
+**Sólo con colores**, y la primera versión no lo limitaba: avisaba de cualquier valor que
+coincidiera con cualquier token, y eso es un generador de falsos positivos. Un `#001745` es
+una huella dactilar y encontrarlo en la lista demuestra algo; un `500`, un `16px` o un `0`
+coinciden con *algún* token en cuanto el sistema tiene doscientos. Marcar un peso de 500
+porque existe un `--…--text-title-sm--font-weight: 500` hacía creer que alguien había roto
+ese estilo, cuando lo que pasaba era que no lo estaba usando **en absoluto** —ni el tamaño,
+ni el interlineado, ni el peso—. El caso que sí tiene contexto, un peso suelto dentro de un
+elemento que sí lleva estilo puesto, lo cuenta la sección de arriba, que sabe contra qué
+compararlo.
+
+### Por qué esto hace falta un rodeo
 
 Cuando el navegador pinta la página, `var(--color-text)` ya es un `rgb(26, 26, 26)` y la
 variable de la que venía **se ha perdido**: no hay ninguna API del DOM que la recuerde, y
@@ -308,6 +370,8 @@ Como el resto del inspector, **si no cuadra se calla**:
   dentro de un atajo: en `border: 2px solid var(--color-linea)` la variable va a mitad de
   la declaración, y la que vale es la que da el color computado.
 - Con dos variables que cuadren igual de bien, tampoco se dice ninguna.
+- Y no se avisa de un valor suelto que coincida con un token si el valor no es un color,
+  porque entonces la coincidencia no demuestra nada. Ver arriba.
 
 Lo que no puede decirte es si la variable aplicada es la **correcta**: el panel te dirá que
 ahí hay un `--color-text-secondary`, y si eso tenía que haber sido el primario lo decides

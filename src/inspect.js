@@ -581,8 +581,80 @@
    * main.cjs). Llega unos milisegundos después que el resto y el panel se
    * repinta; aquí sólo se reparte a la fila que le toca, para que la columna de
    * la captura enseñe exactamente lo mismo sin decidirlo por su cuenta. */
+  /* Lo que se lee en la línea de debajo del valor, decidido aquí una vez para
+   * que el panel y la columna de la captura digan lo mismo. `warn` es lo que
+   * se pinta en ámbar: no está roto —hoy se ve igual de bien—, está suelto. */
   function tokenFor (data, prop) {
-    return (data.tokens && data.tokens[prop]) || null
+    const t = (data.tokens && data.tokens[prop]) || null
+    if (!t) return null
+    const short = shortToken(t.name)
+    return {
+      name: t.name,
+      value: t.value,
+      short,
+      label: t.loose ? 'a mano · hay ' + short : short,
+      warn: !!t.loose
+    }
+  }
+
+  /* Los dos últimos tramos de un nombre de token, que son los que informan.
+   *
+   * `--wp--preset--color--ds-content-high` no cabe en un panel de 340px y sale
+   * partido en dos líneas, y de esos cuatro tramos los dos primeros son la
+   * fontanería del sistema: se repiten igual en todos los tokens, así que
+   * dentro del panel no distinguen nada.
+   *
+   * Dos y no uno, que era lo primero que probé: el último tramo se explica
+   * solo en `ds-content-high` y no se explica nada en `--wp--custom--spacing--md`,
+   * donde quedarse con `md` es quedarse sin saber md de qué. El de delante es
+   * la categoría —`spacing`, `radius`, `color`— y con él el nombre vuelve a
+   * identificar algo.
+   *
+   * El nombre entero sigue estando en el tooltip, y es lo que se copia al
+   * pulsarlo. Un sistema de un solo guion —`--color-text`— no tiene tramos que
+   * quitar y se queda como está. */
+  function shortToken (name) {
+    const parts = name.replace(/^--/, '').split('--')
+    return '--' + (parts.length > 2 ? parts.slice(-2).join('--') : parts.join('--'))
+  }
+
+  /* El nombre del estilo se lee como un nombre y no como una variable, que es
+   * lo que es: el `body/xs` de toda la vida. Sin los guiones de delante. */
+  function styleName (stem) {
+    const cut = stem.lastIndexOf('--')
+    return cut > 0 ? stem.slice(cut + 2) : stem.replace(/^--/, '')
+  }
+
+  /* Qué variable enseñar en una fila de tipografía, que ya no es «la suya».
+   *
+   * Si el elemento tiene un estilo puesto y esta propiedad es una de sus
+   * piezas, no se enseña nada: el estilo ya está dicho arriba y repetir
+   * `--…--text-label-md--font-size` debajo del tamaño es decir dos veces lo
+   * mismo, con la mitad informativa enterrada. Lo que queda por mirar es lo
+   * que se sale, y eso sí se dice. */
+  function typeToken (data, prop) {
+    const style = data.style
+    const own = tokenFor(data, prop)
+    if (own) {
+      if (style && own.name.indexOf(style.stem) === 0) return null
+      return own
+    }
+    const off = style && style.off && style.off[prop]
+    if (!off) return null
+    const name = styleName(style.stem)
+    return {
+      name: off.name,
+      value: off.value,
+      short: shortToken(off.name),
+      /* Las dos maneras de salirse, y no dicen lo mismo ni de lejos: haber
+       * escrito a mano el valor que el estilo ya traía es una desconexión que
+       * hoy no se nota, y traer otro distinto es una decisión que alguien tomó
+       * —a lo mejor a propósito— y que conviene ver al lado del número. */
+      label: off.same
+        ? 'a mano · lo trae ' + name
+        : 'fuera de ' + name + ' · dice ' + off.value,
+      warn: true
+    }
   }
 
   /* Display groups. The renderer paints these as DOM and the capture writes
@@ -635,9 +707,21 @@
     out.push({ title: 'Caja', rows: box })
 
     if (data.text) {
+      /* El estilo, arriba y una sola vez. Es la única línea de la sección que
+       * de verdad hay que leer: si está puesto, sus piezas están bien por
+       * definición y las cuatro filas de debajo son la confirmación, no la
+       * pregunta. */
+      const style = data.style
+        ? [{
+            k: 'Estilo',
+            v: styleName(data.style.stem),
+            note: data.style.stem,
+            accent: true
+          }]
+        : []
       out.push({
         title: 'Tipografía',
-        rows: [
+        rows: style.concat([
           /* La fuente que pinta va primero y lo que pide el CSS queda como
            * etiqueta. Las dos cosas hacen falta y no son la misma pregunta:
            * «Helvetica [-apple-system]» se lee como «pediste eso y te han
@@ -648,19 +732,19 @@
                 v: data.text.rendered,
                 tag: data.text.declared,
                 note: data.text.stack,
-                token: tokenFor(data, 'font-family')
+                token: typeToken(data, 'font-family')
               }
             : {
                 k: 'Familia',
                 v: data.text.rendered || data.text.family,
                 note: data.text.stack,
-                token: tokenFor(data, 'font-family')
+                token: typeToken(data, 'font-family')
               },
-          { k: 'Tamaño', v: data.text.size, token: tokenFor(data, 'font-size') },
-          { k: 'Interlineado', v: data.text.lineHeight, token: tokenFor(data, 'line-height') },
-          { k: 'Peso', v: data.text.weight, token: tokenFor(data, 'font-weight') },
-          { k: 'Espaciado', v: data.text.letterSpacing, token: tokenFor(data, 'letter-spacing') }
-        ].concat(data.text.transform ? [{ k: 'Transform', v: data.text.transform }] : [])
+          { k: 'Tamaño', v: data.text.size, token: typeToken(data, 'font-size') },
+          { k: 'Interlineado', v: data.text.lineHeight, token: typeToken(data, 'line-height') },
+          { k: 'Peso', v: data.text.weight, token: typeToken(data, 'font-weight') },
+          { k: 'Espaciado', v: data.text.letterSpacing, token: typeToken(data, 'letter-spacing') }
+        ]).concat(data.text.transform ? [{ k: 'Transform', v: data.text.transform }] : [])
       })
     }
 

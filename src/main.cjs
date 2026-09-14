@@ -323,8 +323,8 @@ function inspectBlock (ins) {
       /* Sin dibujo y sin dos líneas: esta franja es la de repuesto y va a lo
        * ancho, así que la variable se cuelga detrás del valor y ya. */
       const token = row.token
-        ? `<span style="color:${row.token.loose ? '#d9a469' : '#93a9c9'};padding-left:7px">` +
-          `${esc(row.token.loose ? 'a mano · hay ' + row.token.name : row.token.name)}</span>`
+        ? `<span style="color:${row.token.warn ? '#d9a469' : '#93a9c9'};padding-left:7px">` +
+          `${esc(row.token.label)}</span>`
         : ''
       return `<div style="display:flex;gap:8px;align-items:baseline;padding:1px 0">` +
         `<span style="color:#5d646e;flex:0 0 96px">${esc(row.k)}</span>` +
@@ -401,8 +401,7 @@ function diagramHtml (row) {
  * delante para ir a mirar de dónde salía ese color. */
 function tokenHtml (token) {
   if (!token) return ''
-  const text = token.loose ? 'a mano · hay ' + token.name : token.name
-  return `<span class="var${token.loose ? ' loose' : ''}">${esc(text)}</span>`
+  return `<span class="var${token.warn ? ' loose' : ''}">${esc(token.label)}</span>`
 }
 
 function columnHtml (head, ins) {
@@ -418,7 +417,8 @@ function columnHtml (head, ins) {
       const tag = row.tag
         ? `<span class="tag${row.bad ? ' bad' : ''}">${esc(row.tag)}</span>`
         : ''
-      return `<div class="row"><span class="k">${esc(row.k)}</span>` +
+      return `<div class="row${row.accent ? ' is-style' : ''}">` +
+        `<span class="k">${esc(row.k)}</span>` +
         `<span class="v"><span class="vt">${swatch}${esc(row.v)}</span>` +
         `${tag}${tokenHtml(row.token)}</span></div>`
     }).join('')
@@ -462,6 +462,7 @@ function columnHtml (head, ins) {
     .v{color:#e6e8ec;flex:1 1 auto;min-width:0;font-size:14px;
       display:flex;align-items:baseline;flex-wrap:wrap;gap:5px}
     .vt{flex:0 1 auto;min-width:0;word-break:break-word}
+    .row.is-style .vt{color:#a9c9ff}
     .var{flex:0 0 100%;font-size:12px;line-height:1.4;color:#93a9c9;word-break:break-all}
     .var.loose{color:#d9a469}
     .bm-foot{display:flex;align-items:baseline;gap:7px;padding:7px 2px 0}
@@ -991,6 +992,16 @@ const INHERITED = new Set([
   'color', 'font-family', 'font-size', 'font-weight', 'line-height', 'letter-spacing'
 ])
 
+/* Los valores que son una huella dactilar y no una casualidad. Ver el aviso
+ * «a mano» en readTokens. */
+const COLOURS = new Set(['color', 'background-color', 'border-top-color'])
+
+/* Las que componen un estilo de texto. En Figma esto es una sola cosa
+ * —`body/xs`, con su tamaño, su peso y su familia dentro— y en CSS no existe
+ * tal cosa: lo más parecido es un puñado de variables que comparten raíz,
+ * `--…--text-label-md--font-size` y sus hermanas. Es lo que busca typeStyle. */
+const TYPE_PROPS = ['font-family', 'font-size', 'font-weight', 'line-height', 'letter-spacing']
+
 /* `#1a1a1a` y `rgb(26, 26, 26)` son el mismo color y dos cadenas distintas, y
  * la comparación se hace justo entre esas dos: una variable guarda el texto
  * que se escribió y el computado siempre trae la forma larga. Sin esto, cada
@@ -1050,6 +1061,75 @@ function stack (match) {
   return (match.inlineStyle ? [match.inlineStyle] : []).concat(own)
 }
 
+/* La raíz de un token, quitándole el nombre de la propiedad que trae pegado al
+ * final: de `--wp--custom--typography--text-label-md--font-size` sale
+ * `--wp--custom--typography--text-label-md`, que es el estilo. */
+function stemOf (name, prop) {
+  if (name.length <= prop.length || name.slice(-prop.length) !== prop) return null
+  const stem = name.slice(0, name.length - prop.length).replace(/-+$/, '')
+  return stem.length > 2 ? stem : null
+}
+
+/* La hermana de una raíz para otra propiedad. El separador es `--` en unos
+ * sistemas y `-` en otros, y no cuesta nada probar los dos. */
+function sibling (vars, stem, prop) {
+  for (const sep of ['--', '-']) {
+    if (vars[stem + sep + prop] != null) return stem + sep + prop
+  }
+  return null
+}
+
+/* El estilo de texto aplicado, que es la pregunta de verdad.
+ *
+ * Enseñar `--…--text-label-md--font-size`, `--…--text-label-md--line-height` y
+ * `--…--text-label-md--font-weight` en tres filas seguidas es decir tres veces
+ * lo mismo: lo que cambia entre ellas —`font-size`, `line-height`— ya lo dice
+ * el nombre de la fila, y lo único que informa, `text-label-md`, queda
+ * enterrado y repetido. Si el estilo está puesto, sus piezas están bien por
+ * definición y no hay nada que mirar. Así que se dice una vez y arriba.
+ *
+ * Hacen falta dos propiedades para hablar de estilo: con una sola, la raíz es
+ * una coincidencia del nombre y no una prueba de que haya un estilo detrás.
+ *
+ * Y entonces sí se puede señalar lo que se sale, que sin esta raíz era
+ * imposible: si el elemento usa `text-label-md` y el peso va a mano, se puede
+ * comparar contra lo que ese estilo dice que debería pesar. */
+function typeStyle (out, vars, raw, value) {
+  const stems = {}
+  for (const prop of TYPE_PROPS) {
+    const t = out[prop]
+    if (!t || t.loose) continue
+    const stem = stemOf(t.name, prop)
+    if (stem) (stems[stem] = stems[stem] || []).push(prop)
+  }
+
+  let best = null
+  for (const stem of Object.keys(stems)) {
+    if (stems[stem].length < 2) continue
+    if (!best || stems[stem].length > stems[best].length) best = stem
+  }
+  if (!best) return null
+
+  /* Lo que se sale del estilo, que es lo único que queda por mirar. Sólo de
+   * las propiedades para las que el estilo tiene algo que decir: si no existe
+   * `--…--text-label-md--letter-spacing`, el estilo no opina del espaciado y
+   * no hay nada de lo que salirse. */
+  const off = {}
+  for (const prop of TYPE_PROPS) {
+    const t = out[prop]
+    if (t && !t.loose && stemOf(t.name, prop) === best) continue
+    const sib = sibling(vars, best, prop)
+    if (!sib || value[prop] == null) continue
+    off[prop] = { name: sib, value: raw[sib], same: vars[sib] === value[prop] }
+  }
+
+  return {
+    stem: best,
+    props: stems[best],
+    off: Object.keys(off).length ? off : null
+  }
+}
+
 function readTokens (match, computed) {
   const value = {}
   const vars = {}
@@ -1100,11 +1180,22 @@ function readTokens (match, computed) {
     /* El valor a mano que coincide con un token: el color es el correcto hoy y
      * el día que el token cambie éste no cambiará. Es el fallo que se busca al
      * revisar un sistema de diseño y el único que no se ve mirando la
-     * pantalla, porque hoy se ve exactamente igual de bien. */
+     * pantalla, porque hoy se ve exactamente igual de bien.
+     *
+     * Sólo con colores, y la razón es cuánto pesa la coincidencia: un
+     * `#001745` es una huella dactilar y encontrarlo en la lista de tokens
+     * demuestra algo, mientras que un `500`, un `16px` o un `0` coinciden con
+     * *algún* token en cuanto el sistema tiene doscientos. Avisar de esos era
+     * señalar una casualidad y hacer creer que alguien había roto un estilo
+     * que en realidad no estaba puesto. El caso con contexto —un peso a mano
+     * dentro de un elemento que sí usa un estilo— lo cuenta `typeStyle`, que
+     * sabe contra qué compararlo. */
+    if (!COLOURS.has(prop)) continue
     const same = Object.keys(vars).find((n) => vars[n] === painted)
     if (same) out[prop] = { name: same, value: raw[same], loose: true }
   }
-  return Object.keys(out).length ? out : null
+  if (!Object.keys(out).length) return null
+  return { props: out, style: typeStyle(out, vars, raw, value) }
 }
 
 ipcMain.handle('inspect-details', async (_e, { id, selector }) => {
@@ -1132,16 +1223,20 @@ ipcMain.handle('inspect-details', async (_e, { id, selector }) => {
 
     /* Las variables no son motivo para perder la fuente: van en su propio
      * try, y una página sin tokens sencillamente no trae esta parte. */
-    let tokens = null
+    let read = null
     try {
-      const [match, style] = await Promise.all([
+      const [match, computed] = await Promise.all([
         wc.debugger.sendCommand('CSS.getMatchedStylesForNode', { nodeId: found.nodeId }),
         wc.debugger.sendCommand('CSS.getComputedStyleForNode', { nodeId: found.nodeId })
       ])
-      tokens = readTokens(match, style.computedStyle || [])
+      read = readTokens(match, computed.computedStyle || [])
     } catch (_) {}
 
-    return { font: best ? prettyFont(best.familyName) : null, tokens }
+    return {
+      font: best ? prettyFont(best.familyName) : null,
+      tokens: read ? read.props : null,
+      style: read ? read.style : null
+    }
   } catch (_) {
     return null
   } finally {

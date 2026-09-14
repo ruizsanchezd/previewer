@@ -613,6 +613,11 @@ button:active { background: #ffffff14; }
 }
 .ins-tag.bad { background: #ff5f5626; color: var(--danger); }
 
+/* El estilo de texto aplicado: la única línea de la sección que hay que leer
+ * de verdad, porque si está puesto lo de debajo es la confirmación y no la
+ * pregunta. En el azul del inspector para que la vista caiga ahí primero. */
+.ins-row.is-style .ins-vt { color: #a9c9ff; }
+
 .ins-swatch {
   flex: none;
   width: 9px;

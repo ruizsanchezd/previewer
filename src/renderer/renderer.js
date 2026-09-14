@@ -939,6 +939,7 @@ async function askDetails (p) {
   if (!out || insState.path !== forPath || !insState.data) return
   if (out.font && insState.data.text) insState.data.text.rendered = out.font
   insState.data.tokens = out.tokens || null
+  insState.data.style = out.style || null
   if (!out.font && !out.tokens) return
   paintInspector()
 }
@@ -987,12 +988,11 @@ function insToken (token) {
    * y un botón dentro de otro es anidamiento inválido. El clic se queda aquí,
    * así que pulsar el nombre copia la variable y no el valor. */
   const el = document.createElement('span')
-  el.className = 'ins-var' + (token.loose ? ' loose' : '')
-  el.textContent = token.loose ? 'a mano · hay ' + token.name : token.name
-  el.title = token.loose
-    ? 'El valor está escrito directamente y coincide con ' + token.name +
-      ' (' + token.value + ').\nCopiar «var(' + token.name + ')»'
-    : token.name + ': ' + token.value + '\nCopiar «var(' + token.name + ')»'
+  el.className = 'ins-var' + (token.warn ? ' loose' : '')
+  el.textContent = token.label
+  /* El nombre entero vive aquí: en la línea se enseña recortado porque no cabe,
+   * pero para ir a buscarlo al CSS hace falta completo. */
+  el.title = token.name + ': ' + token.value + '\nCopiar «var(' + token.name + ')»'
   el.addEventListener('click', (e) => {
     e.stopPropagation()
     copyValue('var(' + token.name + ')')
@@ -1062,7 +1062,7 @@ async function copyValue (text) {
  * pegarlo en otro sitio. */
 function insRow (row) {
   const el = document.createElement('button')
-  el.className = 'ins-row'
+  el.className = 'ins-row' + (row.accent ? ' is-style' : '')
   /* La pila de fuentes completa y el elemento del que viene un fondo heredado
    * son datos de segundo orden: caben en el tooltip y no en la fila. */
   el.title = (row.note ? row.note + '\n' : '') + 'Copiar «' + row.v + '»'
