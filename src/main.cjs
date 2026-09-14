@@ -474,7 +474,7 @@ function columnHtml (head, ins) {
       color:#8a919c;font-size:12px}
     .tag.bad{background:#ff5f5633;color:#ff8f88}
     .bm{padding:8px 0 4px}
-    .bm-ring{position:relative;padding:19px 26px;border-radius:6px}
+    .bm-ring{position:relative;padding:24px 26px;border-radius:6px}
     .bm-margin{background:#7a552e2b;box-shadow:inset 0 0 0 1px #c9924e54}
     .bm-border{background:#ffffff0a;box-shadow:inset 0 0 0 1px #ffffff1f}
     .bm-padding{background:#3f6b452b;box-shadow:inset 0 0 0 1px #6fb07a54}
@@ -1061,22 +1061,56 @@ function stack (match) {
   return (match.inlineStyle ? [match.inlineStyle] : []).concat(own)
 }
 
-/* La raíz de un token, quitándole el nombre de la propiedad que trae pegado al
- * final: de `--wp--custom--typography--text-label-md--font-size` sale
- * `--wp--custom--typography--text-label-md`, que es el estilo. */
+/* La raíz de un token, quitándole el nombre de la propiedad que lleva pegado.
+ *
+ * Los dos órdenes existen y hay que conocer los dos: unos sistemas lo ponen
+ * detrás —`--…--text-label-md--font-size`— y otros delante
+ * —`--font-size--text-body-xs`—. Buscando sólo el sufijo, los segundos no se
+ * detectaban como estilo y salían con la variable repetida en cada fila, que
+ * es justo lo que se venía a quitar. */
 function stemOf (name, prop) {
-  if (name.length <= prop.length || name.slice(-prop.length) !== prop) return null
-  const stem = name.slice(0, name.length - prop.length).replace(/-+$/, '')
-  return stem.length > 2 ? stem : null
-}
-
-/* La hermana de una raíz para otra propiedad. El separador es `--` en unos
- * sistemas y `-` en otros, y no cuesta nada probar los dos. */
-function sibling (vars, stem, prop) {
-  for (const sep of ['--', '-']) {
-    if (vars[stem + sep + prop] != null) return stem + sep + prop
+  if (name.length > prop.length && name.slice(-prop.length) === prop) {
+    const stem = name.slice(0, name.length - prop.length).replace(/-+$/, '')
+    if (stem.length > 2) return stem
+  }
+  const head = '--' + prop
+  if (name.indexOf(head) === 0 && name.length > head.length) {
+    const stem = '--' + name.slice(head.length).replace(/^-+/, '')
+    if (stem.length > 2) return stem
   }
   return null
+}
+
+/* La hermana de una raíz para otra propiedad. Cuatro formas posibles: la
+ * propiedad delante o detrás, y con uno o dos guiones de separador. Probarlas
+ * todas no cuesta nada y ahorra tener que saber de qué sistema viene. */
+function sibling (vars, stem, prop) {
+  const bare = stem.replace(/^--/, '')
+  const names = [
+    stem + '--' + prop, stem + '-' + prop,
+    '--' + prop + '--' + bare, '--' + prop + '-' + bare
+  ]
+  for (const name of names) {
+    if (vars[name] != null) return name
+  }
+  return null
+}
+
+/* Si dos valores son el mismo, sabiendo cuál es la propiedad.
+ *
+ * Hace falta por el interlineado: escribirlo sin unidad —`line-height: 1.6`—
+ * es lo normal, y entonces el token guarda `1.6` mientras el computado trae
+ * `19.2px`. Comparados como cadenas no se parecen en nada, y así se quedaba
+ * sin detectar el interlineado de medio sistema de diseño; y con él, la mitad
+ * de las veces que un estilo de texto podía reconocerse entero. */
+function sameValue (prop, token, painted, fontSize) {
+  if (token === painted) return true
+  if (prop !== 'line-height' || /[a-z%]/.test(token)) return false
+  const ratio = parseFloat(token)
+  const px = parseFloat(painted)
+  const base = parseFloat(fontSize)
+  if (!ratio || !px || !base) return false
+  return Math.abs(ratio * base - px) < 0.5
 }
 
 /* El estilo de texto aplicado, que es la pregunta de verdad.
@@ -1120,7 +1154,11 @@ function typeStyle (out, vars, raw, value) {
     if (t && !t.loose && stemOf(t.name, prop) === best) continue
     const sib = sibling(vars, best, prop)
     if (!sib || value[prop] == null) continue
-    off[prop] = { name: sib, value: raw[sib], same: vars[sib] === value[prop] }
+    off[prop] = {
+      name: sib,
+      value: raw[sib],
+      same: sameValue(prop, vars[sib], value[prop], value['font-size'])
+    }
   }
 
   return {
@@ -1172,7 +1210,8 @@ function readTokens (match, computed) {
        * atribución equivocada manda a alguien a cambiar la línea que no era.
        * Con dos que cuadren tampoco se puede decir cuál: callar las dos veces,
        * que es el mismo criterio que el de las cotas. */
-      const fits = used.filter((n) => vars[n] != null && vars[n] === painted)
+      const fits = used.filter((n) =>
+        vars[n] != null && sameValue(prop, vars[n], painted, value['font-size']))
       if (fits.length === 1) out[prop] = { name: fits[0], value: raw[fits[0]] }
       continue
     }

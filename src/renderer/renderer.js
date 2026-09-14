@@ -910,6 +910,10 @@ function paintInspector () {
   insBody.appendChild(tip)
   paintDistance()
 
+  /* El diagrama que tenía el ratón encima ya no existe, y el frame ya ha
+   * soltado sus bandas: que el próximo hover no se crea que sigue puesto. */
+  bandsSent = null
+
   for (const sec of window.PreviewerInspect.sections(insState.data)) {
     const box = document.createElement('div')
     box.className = 'ins-sec'
@@ -1004,6 +1008,30 @@ function insToken (token) {
  * número de cada lado pegado a su lado. Qué anillos hay y qué mide cada uno lo
  * decide `boxModel` en inspect.js; aquí sólo se pinta. */
 const BM_SIDES = ['t', 'r', 'b', 'l']
+const BM_NAMES = { t: 'top', r: 'right', b: 'bottom', l: 'left' }
+const RINGS = ['margin', 'border', 'padding']
+
+const sideOf = (el) =>
+  BM_NAMES[BM_SIDES.find((s) => el.classList.contains('ins-bm-' + s))] || null
+
+/* El ratón sobre el diagrama pinta esa banda encima de la propia página, que
+ * es la manera de contestar «¿este hueco es de verdad el margen de esto?» sin
+ * discutirlo: o la banda cae sobre el hueco o no cae. Sobre un número se pinta
+ * sólo ese lado; sobre el anillo, los cuatro.
+ *
+ * Se manda sólo cuando cambia: el `mousemove` dispara decenas de veces por
+ * segundo y el frame repinta la capa entera con cada mensaje. */
+let bandsSent = null
+
+function showBands (spec) {
+  const key = spec ? spec.ring + ':' + (spec.side || '') : null
+  if (key === bandsSent) return
+  bandsSent = key
+  const p = state.panels.find((q) => q.id === insState.id)
+  if (p && p.webview) {
+    try { p.webview.send('inspect-bands', spec) } catch (_) {}
+  }
+}
 
 function insDiagram (row) {
   const d = row.diagram
@@ -1038,6 +1066,19 @@ function insDiagram (row) {
   const box = document.createElement('div')
   box.className = 'ins-bm'
   box.appendChild(node)
+
+  /* Un solo oyente en el contenedor y no uno por anillo: los anillos están
+   * anidados, y `mouseleave` no salta al pasar de uno a su hijo, así que con
+   * oyentes sueltos la banda se quedaba pegada al anillo de fuera. Aquí se
+   * pregunta en cada movimiento sobre qué se está, que siempre acierta. */
+  box.addEventListener('mousemove', (e) => {
+    const ring = e.target.closest('.ins-bm-ring')
+    if (!ring) return showBands(null)
+    const name = RINGS.find((r) => ring.classList.contains('ins-bm-' + r))
+    const value = e.target.closest('.ins-bm-v')
+    showBands(name ? { ring: name, side: value ? sideOf(value) : null } : null)
+  })
+  box.addEventListener('mouseleave', () => showBands(null))
   /* Al pie y no dentro de ningún anillo: habla del padding entero, y metido en
    * el marco del padding competiría por el sitio con sus cuatro números. */
   if (row.token) {

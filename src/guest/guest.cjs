@@ -278,7 +278,11 @@ const ins = {
    * Vive en el estado y no en una variable del momento porque la capa se
    * repinta entera con cada movimiento del ratón: sin esto, la pista duraría
    * hasta el píxel siguiente. */
-  px: 0, py: 0, tip: null, tipTail: null
+  px: 0, py: 0, tip: null, tipTail: null,
+  /* Qué anillo del diagrama del panel tiene el ratón encima, para pintar
+   * esa banda sobre la página. Lo manda el host, que es quien tiene el
+   * diagrama; aquí sólo se pinta. */
+  bands: null
 }
 
 const TIP_MS = 6000
@@ -309,7 +313,8 @@ const INS_MS = 40
 
 function insReport () {
   const info = inspect.overlay({
-    select: ins.sel, hover: ins.hov, k: ins.k, locked: ins.lock, tip: ins.tip
+    select: ins.sel, hover: ins.hov, k: ins.k, locked: ins.lock, tip: ins.tip,
+    bands: ins.bands
   })
   ipcRenderer.sendToHost('inspect-hover', {
     label: info.label,
@@ -373,6 +378,8 @@ const insSwallow = (e) => {
   ins.sel = found
   ins.hov = found
   ins.lock = false
+  /* Las bandas hablaban de la caja del elemento anterior. */
+  ins.bands = null
   ins.px = e.clientX
   ins.py = e.clientY
   /* La pista se va al primer clic siguiente: si estás clicando, o ya lo has
@@ -401,7 +408,8 @@ const insKey = (e) => {
 const insRedraw = () => {
   if (!ins.on || !inspect || (!ins.sel && !ins.hov)) return
   inspect.overlay({
-    select: ins.sel, hover: ins.hov, k: ins.k, locked: ins.lock, tip: ins.tip
+    select: ins.sel, hover: ins.hov, k: ins.k, locked: ins.lock, tip: ins.tip,
+    bands: ins.bands
   })
 }
 
@@ -416,6 +424,14 @@ const INS_EVENTS = [
 ]
 
 /* La pista de la primera vez, que la pide el host tras el primer clic. */
+/* El ratón por encima del diagrama de la caja, arriba en el panel. Llega
+ * `null` al salir. */
+ipcRenderer.on('inspect-bands', (_e, bands) => {
+  if (!ins.on || !inspect || !ins.sel) return
+  ins.bands = bands || null
+  insRedraw()
+})
+
 ipcRenderer.on('inspect-tip', () => {
   if (!ins.on || !inspect || !ins.sel) return
   insTip(true)
@@ -437,6 +453,7 @@ ipcRenderer.on('inspect', (_e, { on, k, clear }) => {
     ins.hov = null
     ins.lock = false
     ins.tip = null
+    ins.bands = null
   }
 
   if (on && !ins.on) {
@@ -457,6 +474,7 @@ ipcRenderer.on('inspect', (_e, { on, k, clear }) => {
     ins.hov = null
     ins.lock = false
     ins.tip = null
+    ins.bands = null
     if (inspect) inspect.clear()
     return
   }

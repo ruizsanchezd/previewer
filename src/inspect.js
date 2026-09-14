@@ -636,7 +636,12 @@
     const style = data.style
     const own = tokenFor(data, prop)
     if (own) {
-      if (style && own.name.indexOf(style.stem) === 0) return null
+      /* Qué propiedades componen el estilo lo dice `style.props`, y no se
+       * puede deducir mirando si el nombre empieza por la raíz: con la
+       * propiedad delante —`--font-size--text-body-xs`— la raíz va al final y
+       * la comprobación fallaba, así que el estilo salía arriba y las filas
+       * seguían repitiéndolo debajo, que era lo peor de los dos mundos. */
+      if (style && style.props.indexOf(prop) > -1) return null
       return own
     }
     const off = style && style.off && style.off[prop]
@@ -846,9 +851,80 @@
         inset 0 0 0 1px #ffffff1f;
       font-size: calc(11.5px * var(--pk)); line-height: 1.4; color: #d7dae0; }
     #${LAYER_ID} .pi-tip b { color: #fff; font-weight: 600; }
+    #${LAYER_ID} .pi-band { position: absolute; }
+    #${LAYER_ID} .pi-margin { background: #f5a62361; }
+    #${LAYER_ID} .pi-border { background: #d9b06a52; }
+    #${LAYER_ID} .pi-padding { background: #6fc47a5c; }
     #${LAYER_ID} .pi-line { position: absolute; background: ${HOVER}; }
     #${LAYER_ID} .pi-guide { position: absolute; background: ${HOVER}66; }
   `
+
+  /* Las bandas de margen y padding pintadas sobre la propia página.
+   *
+   * El diagrama contesta en números y esto contesta a ojo, que para «¿este
+   * hueco de 12px es de verdad el margen de esto?» es la diferencia entre
+   * discutirlo y verlo: pasas el ratón por el número del panel y la banda cae
+   * justo encima del hueco, o no cae.
+   *
+   * Los colores son los de siempre en un inspector —naranja el margen, verde
+   * el padding— porque es un lenguaje ya aprendido. El resalte del elemento
+   * sigue sin teñirse, que es otra cosa: aquello falsearía el color que la
+   * captura va a demostrar, y esto vive sólo mientras el ratón está en el
+   * panel y nunca llega a una imagen. */
+  function bands (root, el, spec) {
+    const cs = getComputedStyle(el)
+    const r = el.getBoundingClientRect()
+    const n = (prop) => parseFloat(cs[prop]) || 0
+    let outer, inner
+
+    if (spec.ring === 'margin') {
+      inner = { left: r.left, top: r.top, right: r.right, bottom: r.bottom }
+      outer = {
+        left: r.left - n('margin-left'),
+        top: r.top - n('margin-top'),
+        right: r.right + n('margin-right'),
+        bottom: r.bottom + n('margin-bottom')
+      }
+    } else if (spec.ring === 'border') {
+      outer = { left: r.left, top: r.top, right: r.right, bottom: r.bottom }
+      inner = {
+        left: r.left + n('border-left-width'),
+        top: r.top + n('border-top-width'),
+        right: r.right - n('border-right-width'),
+        bottom: r.bottom - n('border-bottom-width')
+      }
+    } else {
+      outer = {
+        left: r.left + n('border-left-width'),
+        top: r.top + n('border-top-width'),
+        right: r.right - n('border-right-width'),
+        bottom: r.bottom - n('border-bottom-width')
+      }
+      inner = {
+        left: outer.left + n('padding-left'),
+        top: outer.top + n('padding-top'),
+        right: outer.right - n('padding-right'),
+        bottom: outer.bottom - n('padding-bottom')
+      }
+    }
+
+    /* El marco entre los dos rectángulos, en cuatro tiras. Las de los lados no
+     * llegan a las esquinas: ahí ya está la de arriba o la de abajo, y
+     * solaparlas duplicaría la transparencia y pintaría las esquinas más
+     * oscuras que el resto de la banda. */
+    const parts = {
+      top: [outer.left, outer.top, outer.right - outer.left, inner.top - outer.top],
+      bottom: [outer.left, inner.bottom, outer.right - outer.left, outer.bottom - inner.bottom],
+      left: [outer.left, inner.top, inner.left - outer.left, inner.bottom - inner.top],
+      right: [inner.right, inner.top, outer.right - inner.right, inner.bottom - inner.top]
+    }
+    const sides = spec.side ? [spec.side] : ['top', 'bottom', 'left', 'right']
+    for (const side of sides) {
+      const [x, y, w, h] = parts[side] || []
+      if (!(w > 0 && h > 0)) continue
+      add(root, 'pi-band pi-' + spec.ring, `left:${x}px;top:${y}px;width:${w}px;height:${h}px`)
+    }
+  }
 
   function layer (k) {
     let el = document.getElementById(LAYER_ID)
@@ -1217,6 +1293,10 @@
      * midiendo mientras el ratón esté ahí», y continuo magenta «esto está
      * fijado». Sin nada seleccionado no hay nada que medir. */
     const measuring = !!selRect
+
+    /* Antes que nada: son una superficie de fondo, y el contorno del elemento
+     * tiene que seguir viéndose por encima. */
+    if (selRect && spec.bands) bands(root, sel, spec.bands)
 
     if (selRect) add(root, 'pi-box pi-sel', box(selRect))
     if (hovRect) {

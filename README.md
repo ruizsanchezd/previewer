@@ -105,7 +105,21 @@ Lo que sale, y por qué eso y no la lista entera de propiedades computadas:
   habla. Es el mismo dibujo de anillos anidados de unas DevTools, con el contenido en el
   centro, y sale **sólo cuando hay padding o margen**, que es lo que viene a desambiguar;
   los anillos que están a cero no se dibujan, porque tres marcos de ceros alrededor del
-  único número que dice algo son justo el ruido que se venía a quitar. También gap y radio,
+  único número que dice algo son justo el ruido que se venía a quitar.
+
+  **Pasar el ratón por el diagrama pinta esa banda sobre la propia página**, naranja el
+  margen y verde el padding, como en cualquier inspector. Sobre un número se pinta sólo ese
+  lado; sobre el anillo, los cuatro. Es lo que convierte «¿este hueco de 12px es de verdad
+  el margen de esto, o es el gap del contenedor?» en algo que se mira en vez de discutirse:
+  o la banda cae sobre el hueco, o no cae. El resalte del elemento sigue sin teñirse, que es
+  otra cosa —aquello falsearía el color que la captura va a demostrar—: estas bandas viven
+  sólo mientras el ratón está en el panel y no llegan nunca a una imagen.
+
+  (Y por si la duda se repite: un `gap` del contenedor **no puede** salir aquí como margen.
+  El valor viene del computado del propio elemento, donde un gap del padre no aparece; si
+  el diagrama dice `margin-bottom: 12`, ese elemento tiene doce píxeles de margen.)
+
+  También gap y radio,
   y en un contenedor de flex o grid
   también **cómo reparte el sitio**: dirección, `justify`/`align`, y los anchos reales de
   las columnas de un grid (el computado son píxeles, no el `1fr` que se escribió, que es
@@ -310,6 +324,18 @@ Peso           600
 Si el estilo está puesto, sus piezas están bien por definición: no hay nada que mirar ahí
 abajo. Hacen falta **dos** propiedades con la misma raíz para llamarlo estilo; con una sola,
 la raíz es una coincidencia del nombre y no una prueba de que haya un estilo detrás.
+
+La raíz se busca en **los dos órdenes**, porque los dos existen: unos sistemas ponen la
+propiedad detrás (`--…--text-label-md--font-size`) y otros delante
+(`--font-size--text-body-xs`). Mirando sólo el sufijo, los segundos no se reconocían como
+estilo y salían con la variable repetida en cada fila, que es exactamente lo que esto viene
+a quitar.
+
+Y el interlineado se compara sabiendo que **un ratio y unos píxeles pueden ser el mismo
+valor**: escribir `line-height: 1.6` es lo normal, y entonces el token guarda `1.6`
+mientras el computado trae `19.2px`. Como cadenas no se parecen en nada, y sin esta cuenta
+se quedaba sin reconocer el interlineado de medio sistema —y con él, la mitad de las veces
+que un estilo podía identificarse entero.
 
 Y con la raíz localizada se puede señalar **lo que se sale**, que sin ella era imposible:
 
