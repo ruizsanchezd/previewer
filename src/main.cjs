@@ -462,12 +462,14 @@ function columnHtml (head, ins) {
     .v{color:#e6e8ec;flex:1 1 auto;min-width:0;font-size:14px;
       display:flex;align-items:baseline;flex-wrap:wrap;gap:5px}
     .vt{flex:0 1 auto;min-width:0;word-break:break-word}
-    .row.is-style .vt{color:#a9c9ff}
-    .var{flex:0 0 100%;font-size:12px;line-height:1.4;color:#93a9c9;word-break:break-all}
-    .var.loose{color:#d9a469}
+    .row.is-style .vt{padding:1px 7px;border-radius:3px;background:#4c8dff26;color:#a9c9ff}
+    .var{flex:0 1 auto;min-width:0;padding:1px 6px;border-radius:3px;
+      background:#93a9c91f;color:#a8bcd8;font-size:12px;line-height:1.4;
+      overflow-wrap:anywhere}
+    .var.loose{background:#d9a4691f;color:#d9a469}
     .bm-foot{display:flex;align-items:baseline;gap:7px;padding:7px 2px 0}
     .bm-foot>span:first-child{flex:none;font-size:12px;color:#5d646e}
-    .bm-foot .var{flex:1 1 auto}
+    .bm-foot .var{flex:0 1 auto}
     .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;
       box-shadow:inset 0 0 0 1px #ffffff66;vertical-align:baseline}
     .tag{margin-left:6px;padding:1px 5px;border-radius:3px;background:#ffffff1f;
@@ -476,11 +478,9 @@ function columnHtml (head, ins) {
     .bm{padding:8px 0 4px}
     .bm-ring{position:relative;padding:24px 26px;border-radius:6px}
     .bm-margin{background:#7a552e2b;box-shadow:inset 0 0 0 1px #c9924e54}
-    .bm-border{background:#ffffff0a;box-shadow:inset 0 0 0 1px #ffffff1f}
     .bm-padding{background:#3f6b452b;box-shadow:inset 0 0 0 1px #6fb07a54}
     .bm-n{position:absolute;top:4px;left:7px;font-size:11px;letter-spacing:.04em}
     .bm-margin>.bm-n{color:#d9a469}
-    .bm-border>.bm-n{color:#8a919c}
     .bm-padding>.bm-n{color:#8cc596}
     .bm-c{padding:9px 10px;border-radius:5px;background:#1e3865;
       box-shadow:inset 0 0 0 1px #4c8dff5c;color:#a9c9ff;font-size:13px;
@@ -1103,6 +1103,21 @@ function sibling (vars, stem, prop) {
  * `19.2px`. Comparados como cadenas no se parecen en nada, y así se quedaba
  * sin detectar el interlineado de medio sistema de diseño; y con él, la mitad
  * de las veces que un estilo de texto podía reconocerse entero. */
+/* Si el valor de un token se puede comparar con el computado tal cual.
+ *
+ * Muchos no. Un `clamp(1.25rem, …, 1.5rem)` de tipografía fluida se convierte
+ * en `21.9964px` y no se parece en nada a lo que guarda la variable; un `1rem`
+ * acaba en `16px`; un `calc()` o un `var()` anidado, lo mismo. Y esto importa
+ * porque la comprobación de seguridad exigía que cuadraran: cada token escrito
+ * así se descartaba en silencio, que es por qué un sitio entero de tipografía
+ * fluida no enseñaba ni un estilo. Cuando no se puede comparar hay que decidir
+ * con otra cosa, no dar por falso lo que sólo es incomprobable. */
+function literal (value) {
+  const text = String(value || '')
+  if (/(?:clamp|calc|min|max|var)\(/.test(text)) return false
+  return !/\d\s*(?:vw|vh|vmin|vmax|rem|em|ch|ex|%)/.test(text)
+}
+
 function sameValue (prop, token, painted, fontSize) {
   if (token === painted) return true
   if (prop !== 'line-height' || /[a-z%]/.test(token)) return false
@@ -1137,10 +1152,22 @@ function typeStyle (out, vars, raw, value) {
     if (stem) (stems[stem] = stems[stem] || []).push(prop)
   }
 
+  /* Cuándo una raíz es un estilo y no una casualidad del nombre.
+   *
+   * Contar dos propiedades aplicadas era la primera regla y se quedaba corta:
+   * en un sitio con tipografía fluida puede haber una sola comprobable y el
+   * estilo estar puestísimo, y entonces no salía nunca —que es el fallo que se
+   * veía—. La prueba buena no es cuántas se usan, sino si **el sistema define
+   * la raíz como un grupo**: que existan hermanas suyas para otras propiedades
+   * es lo que distingue un estilo de texto de un peldaño de escala como
+   * `--font-weight-medium`, que no tiene hermanas de ningún tipo. */
   let best = null
   for (const stem of Object.keys(stems)) {
-    if (stems[stem].length < 2) continue
-    if (!best || stems[stem].length > stems[best].length) best = stem
+    const used = stems[stem].length
+    const family = TYPE_PROPS.filter((p) =>
+      stems[stem].indexOf(p) < 0 && sibling(vars, stem, p)).length
+    if (used < 2 && !family) continue
+    if (!best || used > stems[best].length) best = stem
   }
   if (!best) return null
 
@@ -1154,6 +1181,10 @@ function typeStyle (out, vars, raw, value) {
     if (t && !t.loose && stemOf(t.name, prop) === best) continue
     const sib = sibling(vars, best, prop)
     if (!sib || value[prop] == null) continue
+    /* Sólo cuando se puede comparar de verdad. Con un `clamp()` detrás no se
+     * sabe si esto se sale del estilo o lo cumple, y «fuera de text-label-xl ·
+     * dice clamp(1.25rem, …)» sería una acusación inventada y además ilegible. */
+    if (!literal(vars[sib])) continue
     off[prop] = {
       name: sib,
       value: raw[sib],
@@ -1212,7 +1243,23 @@ function readTokens (match, computed) {
        * que es el mismo criterio que el de las cotas. */
       const fits = used.filter((n) =>
         vars[n] != null && sameValue(prop, vars[n], painted, value['font-size']))
-      if (fits.length === 1) out[prop] = { name: fits[0], value: raw[fits[0]] }
+      if (fits.length === 1) {
+        out[prop] = { name: fits[0], value: raw[fits[0]] }
+        continue
+      }
+      /* Una sola variable en la declaración y un valor que no se puede
+       * comprobar —un `clamp()`, un `rem`— es incomprobable, no falso: si lo
+       * que se escribió es `var(--x)` a secas, no hay ninguna otra cosa de la
+       * que pueda venir el valor. Callar aquí era tirar todos los tokens de un
+       * sistema con tipografía fluida.
+       *
+       * Con dos variables de por medio sigue haciendo falta que una cuadre,
+       * porque ahí la comprobación no es la red de seguridad: es lo único que
+       * distingue cuál de las dos habla de esta propiedad. */
+      if (!fits.length && used.length === 1 && vars[used[0]] != null &&
+          !literal(vars[used[0]])) {
+        out[prop] = { name: used[0], value: raw[used[0]] }
+      }
       continue
     }
 

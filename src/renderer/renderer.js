@@ -1009,7 +1009,7 @@ function insToken (token) {
  * decide `boxModel` en inspect.js; aquí sólo se pinta. */
 const BM_SIDES = ['t', 'r', 'b', 'l']
 const BM_NAMES = { t: 'top', r: 'right', b: 'bottom', l: 'left' }
-const RINGS = ['margin', 'border', 'padding']
+const RINGS = ['margin', 'padding']
 
 const sideOf = (el) =>
   BM_NAMES[BM_SIDES.find((s) => el.classList.contains('ins-bm-' + s))] || null

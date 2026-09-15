@@ -551,10 +551,9 @@
    * contar nada: el número está en el lado del que habla.
    *
    * Sale sólo cuando hay padding o margen, que es lo que viene a desambiguar.
-   * Un elemento con sólo un borde no tiene cuatro lados que confundir, y el
-   * grosor por lado ya lo cuenta la fila «Borde» de la sección de color. El
-   * anillo del borde se dibuja de todas formas cuando existe, porque separa el
-   * padding del margen y sin él las dos medidas se leen pegadas.
+   * El borde no tiene anillo: casi siempre mide un píxel, así que el marco no
+   * se ve y las tres cifras que trae son ruido entre las dos que importan. Su
+   * grosor lado a lado ya lo cuenta la fila «Borde» de la sección de color.
    *
    * Los anillos que están a cero no se dibujan: tres marcos de ceros alrededor
    * del único número que dice algo es justo el ruido que veníamos a quitar. */
@@ -564,7 +563,7 @@
     const has = (ring) => m[ring].some((n) => n !== 0)
     if (!has('padding') && !has('margin')) return null
     return {
-      rings: ['margin', 'border', 'padding'].filter(has),
+      rings: ['margin', 'padding'].filter(has),
       margin: m.margin,
       border: m.border,
       padding: m.padding,
@@ -853,7 +852,6 @@
     #${LAYER_ID} .pi-tip b { color: #fff; font-weight: 600; }
     #${LAYER_ID} .pi-band { position: absolute; }
     #${LAYER_ID} .pi-margin { background: #f5a62361; }
-    #${LAYER_ID} .pi-border { background: #d9b06a52; }
     #${LAYER_ID} .pi-padding { background: #6fc47a5c; }
     #${LAYER_ID} .pi-line { position: absolute; background: ${HOVER}; }
     #${LAYER_ID} .pi-guide { position: absolute; background: ${HOVER}66; }
@@ -884,14 +882,6 @@
         top: r.top - n('margin-top'),
         right: r.right + n('margin-right'),
         bottom: r.bottom + n('margin-bottom')
-      }
-    } else if (spec.ring === 'border') {
-      outer = { left: r.left, top: r.top, right: r.right, bottom: r.bottom }
-      inner = {
-        left: r.left + n('border-left-width'),
-        top: r.top + n('border-top-width'),
-        right: r.right - n('border-right-width'),
-        bottom: r.bottom - n('border-bottom-width')
       }
     } else {
       outer = {

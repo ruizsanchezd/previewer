@@ -105,7 +105,10 @@ Lo que sale, y por qué eso y no la lista entera de propiedades computadas:
   habla. Es el mismo dibujo de anillos anidados de unas DevTools, con el contenido en el
   centro, y sale **sólo cuando hay padding o margen**, que es lo que viene a desambiguar;
   los anillos que están a cero no se dibujan, porque tres marcos de ceros alrededor del
-  único número que dice algo son justo el ruido que se venía a quitar.
+  único número que dice algo son justo el ruido que se venía a quitar. El borde no tiene
+  anillo por la misma razón: casi siempre mide un píxel, así que el marco no se ve y las
+  cuatro cifras que trae estorban entre las dos que importan. Su grosor lado a lado ya lo
+  cuenta la fila «Borde» de la sección de color.
 
   **Pasar el ratón por el diagrama pinta esa banda sobre la propia página**, naranja el
   margen y verde el padding, como en cualquier inspector. Sobre un número se pinta sólo ese
@@ -284,9 +287,11 @@ Tamaño         18px
                --text-lg
 ```
 
-Debajo y no al lado porque un `--color-surface-raised` no cabe junto a un hexadecimal en
-un panel de 340px, y partido por la mitad no se puede ni leer ni copiar. Al pulsarlo se
-copia `var(--color-text)`, ya escrito para pegar.
+Va con **forma de etiqueta**, la misma que «heredado» o «AAA», porque es lo mismo que
+ésas: un apunte sobre el valor que tiene al lado, no otro valor. Se coloca a su lado si
+cabe y salta a su propia línea si no —un `--radius-md` no merece una línea para él solo y
+un `--wp--preset--color--ds-content-high` no cabe de ninguna manera—. Al pulsarla se copia
+`var(--color-text)`, ya escrito para pegar.
 
 Del nombre se enseñan **los dos últimos tramos**: de
 `--wp--preset--color--ds-content-high` sale `--color--ds-content-high`, porque
@@ -322,8 +327,15 @@ Peso           600
 ```
 
 Si el estilo está puesto, sus piezas están bien por definición: no hay nada que mirar ahí
-abajo. Hacen falta **dos** propiedades con la misma raíz para llamarlo estilo; con una sola,
-la raíz es una coincidencia del nombre y no una prueba de que haya un estilo detrás.
+abajo.
+
+Para llamarlo estilo hace falta o bien **dos propiedades usando la misma raíz**, o bien
+**una y que el sistema defina hermanas suyas** para otras propiedades. Lo primero solo se
+quedaba corto: en un sitio con tipografía fluida puede haber una sola pieza comprobable y
+el estilo estar puestísimo, y entonces no salía nunca. La prueba buena no es cuántas se
+usan, sino si el sistema define esa raíz **como un grupo** — que es también lo que
+distingue un estilo de texto de un peldaño de escala como `--font-weight-medium`, que no
+tiene hermanas de ningún tipo y no debe salir como si fuera un estilo.
 
 La raíz se busca en **los dos órdenes**, porque los dos existen: unos sistemas ponen la
 propiedad detrás (`--…--text-label-md--font-size`) y otros delante
@@ -398,6 +410,19 @@ Como el resto del inspector, **si no cuadra se calla**:
 - Con dos variables que cuadren igual de bien, tampoco se dice ninguna.
 - Y no se avisa de un valor suelto que coincida con un token si el valor no es un color,
   porque entonces la coincidencia no demuestra nada. Ver arriba.
+
+Con una excepción, que costó un sitio entero sin reconocer: **incomprobable no es falso**.
+Un `clamp(1.25rem, …, 1.5rem)` de tipografía fluida se convierte en `21.9964px`, y un
+`1rem` en `16px`; comparar la variable con lo pintado no da igual ni de lejos, y así se
+descartaba en silencio cada token escrito así. Cuando lo que se escribió es `var(--x)` a
+secas y nada más, no hay ninguna otra cosa de la que pueda venir el valor, así que se dice
+aunque no se pueda comprobar. La comprobación se sigue exigiendo cuando hay **varias**
+variables en juego, porque ahí no es una red de seguridad: es lo único que distingue cuál
+de ellas habla de esta propiedad.
+
+Por lo mismo, un valor a mano no se marca como «fuera del estilo» si lo que el estilo trae
+es un `clamp()`: no se puede saber si se sale o lo cumple, y «fuera de text-label-xl · dice
+clamp(1.25rem, …)» sería una acusación inventada además de ilegible.
 
 Lo que no puede decirte es si la variable aplicada es la **correcta**: el panel te dirá que
 ahí hay un `--color-text-secondary`, y si eso tenía que haber sido el primario lo decides
