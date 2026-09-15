@@ -595,6 +595,10 @@ button:active { background: #ffffff14; }
 .ins-var:hover { background: #93a9c933; color: #cbd9ec; }
 /* Ámbar y no rojo: no está roto, se ve igual de bien hoy. Lo que pasa es que
  * no va a enterarse el día que el token cambie. */
+/* Apagada: es una pieza del estilo que ya está dicho arriba. Está para poder
+ * leerla y copiarla, no para llamar la atención. */
+.ins-var.piece { background: #93a9c914; color: #7e8da0; }
+.ins-var.piece:hover { background: #93a9c92b; color: #b3c2d6; }
 .ins-var.loose { background: #d9a4691f; color: #d9a469; }
 .ins-var.loose:hover { background: #d9a46936; color: #edbd85; }
 

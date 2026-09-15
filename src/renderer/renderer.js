@@ -992,11 +992,13 @@ function insToken (token) {
    * y un botón dentro de otro es anidamiento inválido. El clic se queda aquí,
    * así que pulsar el nombre copia la variable y no el valor. */
   const el = document.createElement('span')
-  el.className = 'ins-var' + (token.warn ? ' loose' : '')
+  el.className = 'ins-var' + (token.warn ? ' loose' : '') + (token.piece ? ' piece' : '')
   el.textContent = token.label
   /* El nombre entero vive aquí: en la línea se enseña recortado porque no cabe,
    * pero para ir a buscarlo al CSS hace falta completo. */
-  el.title = token.name + ': ' + token.value + '\nCopiar «var(' + token.name + ')»'
+  el.title = token.name + ': ' + token.value +
+    (token.alt ? '\nMismo color: ' + token.alt.join(', ') : '') +
+    '\nCopiar «var(' + token.name + ')»'
   el.addEventListener('click', (e) => {
     e.stopPropagation()
     copyValue('var(' + token.name + ')')

@@ -592,7 +592,11 @@
       value: t.value,
       short,
       label: t.loose ? 'a mano · hay ' + short : short,
-      warn: !!t.loose
+      warn: !!t.loose,
+      /* Los otros tokens del sistema que llevan este mismo color. No caben en
+       * la línea ni deben —uno es la respuesta y el resto es el mapa—, pero en
+       * el tooltip cuestan cero y contestan a «¿y no sería aquel otro?». */
+      alt: t.alt && t.alt.length ? t.alt : null
     }
   }
 
@@ -640,17 +644,23 @@
     const style = data.style
     const own = tokenFor(data, prop)
     if (own) {
-      /* Qué propiedades componen el estilo lo dice `style.props`, y no se
-       * puede deducir mirando si el nombre empieza por la raíz: con la
-       * propiedad delante —`--font-size--text-body-xs`— la raíz va al final y
-       * la comprobación fallaba, así que el estilo salía arriba y las filas
-       * seguían repitiéndolo debajo, que era lo peor de los dos mundos.
+      /* La variable de cada fila se enseña siempre, también cuando es una pieza
+       * del estilo de arriba.
        *
-       * Con un estilo que vive en una clase no se calla nada: ahí la variable
-       * de cada fila es el peldaño de la escala —`--text-5xl`— y no el nombre
-       * del estilo troceado, así que dice algo que el estilo no dice. */
-      if (style && style.from !== 'class' && style.props.indexOf(prop) > -1) return null
-      return own
+       * Antes se callaba, por no repetir `--…--text-body-md--font-size` debajo
+       * del tamaño cuando el estilo ya estaba dicho. Pero callar dejaba la
+       * radiografía a medias justo en los sistemas que mejor funcionan: con el
+       * estilo puesto no se veía ni una variable, y «¿de dónde sale este
+       * interlineado?» seguía teniendo respuesta propia —y es la que se copia
+       * para pegarla en otro sitio—.
+       *
+       * Así que se enseña, marcada como pieza para que se pinte apagada: es
+       * una confirmación, no algo que haya que mirar. Qué propiedades componen
+       * el estilo lo dice `style.props` y no el nombre, que los dos órdenes
+       * existen —`--font-size--text-body-xs` lleva la raíz al final—. */
+      const piece = style && style.from !== 'class' && style.from !== 'rule' &&
+        style.props.indexOf(prop) > -1
+      return piece ? Object.assign({}, own, { piece: true }) : own
     }
     const off = style && style.off && style.off[prop]
     if (!off) return null
@@ -724,14 +734,20 @@
        * de verdad hay que leer: si está puesto, sus piezas están bien por
        * definición y las cuatro filas de debajo son la confirmación, no la
        * pregunta. */
+      const name = data.style ? styleName(data.style) : null
       const style = data.style
         ? [{
-            k: 'Estilo',
-            v: styleName(data.style),
-            /* De dónde sale, que es lo que hay que ir a buscar al CSS: la
-             * clase que lo define o la raíz de las variables. */
-            note: data.style.from === 'class' ? '.' + data.style.stem : data.style.stem,
-            accent: true
+            /* «Estilo» sólo cuando de verdad hay uno con nombre de catálogo. Si
+             * la tipografía la decide una regla que no se llama como un token
+             * —un `h2`, un `.card-title`— se dice de dónde sale y no se le pone
+             * nombre de estilo a lo que no lo tiene. Es la misma respuesta con
+             * distinta certeza, y la diferencia se ve: sin la pastilla azul. */
+            k: data.style.from === 'rule' ? 'Definido en' : 'Estilo',
+            v: name,
+            /* De dónde sale, que es lo que hay que ir a buscar al CSS: el
+             * selector que lo define o la raíz de las variables. */
+            note: data.style.stem === name ? null : data.style.stem,
+            accent: data.style.from !== 'rule'
           }]
         : []
       out.push({
