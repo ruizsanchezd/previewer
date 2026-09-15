@@ -1050,20 +1050,35 @@ function varsIn (value) {
  * principio, con lo marcado `!important` por delante de todo lo demás. */
 function winner (styles, names) {
   const pick = (important) => {
-    for (const style of styles) {
-      const found = (style.cssProperties || []).filter((p) =>
+    for (const entry of styles) {
+      const found = (entry.style.cssProperties || []).filter((p) =>
         p.text && !p.disabled && names.indexOf(p.name) > -1 && !!p.important === important)
-      if (found.length) return found[found.length - 1].value
+      if (found.length) {
+        return { value: found[found.length - 1].value, selector: entry.selector }
+      }
     }
     return null
   }
   return pick(true) || pick(false)
 }
 
-/* Las hojas de un elemento, de mayor a menor precedencia y en un solo array. */
+/* Las hojas de un elemento, de mayor a menor precedencia y en un solo array,
+ * cada una con el selector que la trajo.
+ *
+ * El selector hace falta para saber de qué regla sale la tipografía, que en
+ * muchos sistemas es el único sitio donde queda escrito el nombre del estilo
+ * de texto: `.is-style-text-label-sm` es una clase, no una variable.
+ *
+ * De una regla con varios selectores —`h1, h2, .titular`— se coge el que ha
+ * hecho match de verdad, que para eso lo dice el protocolo: quedarse con la
+ * lista entera sacaría nombres de clases que este elemento no lleva. */
 function stack (match) {
-  const own = (match.matchedCSSRules || []).map((m) => m.rule.style).reverse()
-  return (match.inlineStyle ? [match.inlineStyle] : []).concat(own)
+  const own = (match.matchedCSSRules || []).map((m) => {
+    const list = m.rule.selectorList || {}
+    const one = (list.selectors || [])[(m.matchingSelectors || [])[0]]
+    return { style: m.rule.style, selector: (one && one.text) || list.text || '' }
+  }).reverse()
+  return (match.inlineStyle ? [{ style: match.inlineStyle, selector: '' }] : []).concat(own)
 }
 
 /* La raíz de un token, quitándole el nombre de la propiedad que lleva pegado.
@@ -1204,6 +1219,66 @@ function typeStyle (out, vars, raw, value) {
   }
 }
 
+/* El estilo de texto cuando no hay una raíz común entre las variables.
+ *
+ * Es el caso de la mayoría de los sistemas de verdad, y el que faltaba: el
+ * estilo no es un grupo de variables con el mismo prefijo, es **una clase**
+ * —`.is-style-text-label-md`, `.text-heading-xl`— cuya regla trae dentro el
+ * tamaño, el peso y el interlineado, cada uno apuntando a una variable de la
+ * escala general. Enseñar esas variables es correcto y no contesta a la
+ * pregunta: `--text-5xl` es el peldaño de la escala, no el estilo que alguien
+ * eligió aplicar.
+ *
+ * Así que se mira de dónde *vienen*: si una misma regla manda en dos o más
+ * propiedades de tipografía, esa regla es el estilo de este elemento.
+ *
+ * Dos, y no una, por lo de siempre: una regla suelta que toque sólo el peso es
+ * un ajuste, no un estilo. Y el selector tiene que ser una clase a secas para
+ * que su nombre signifique algo — un `h2` o un `.card > p:first-child` mandan
+ * igual, pero llamar «estilo h2» a eso es ponerle nombre de estilo a lo que no
+ * lo tiene. */
+const STYLEISH = /^\.([A-Za-z_][\w-]*)$/
+
+/* El nombre, sin la fontanería que todos los sistemas repiten delante. De
+ * `.is-style-text-label-md` sale `text-label-md`. */
+const STYLE_NOISE = /^(is-style-|has-|wp-block-|style-|type-|typo-|txt-)+/
+
+/* Contar propiedades no basta, y la primera versión de esto lo demostró sola:
+ * daba por estilo cualquier clase que tocara dos —un `.titulo` o un `.intro`
+ * de una hoja cualquiera—, que es el falso positivo de siempre con otro
+ * disfraz.
+ *
+ * Lo que de verdad distingue a un estilo de texto es **cómo se llama**: son un
+ * catálogo y se nombran como tal, con su categoría y su peldaño —`label/md`,
+ * `heading/xl`, `body-sm`—. Esa forma es la firma, y pedirla deja fuera lo que
+ * sólo es una clase que da la casualidad de que toca tipografía.
+ *
+ * Se escapará algún sistema que llame a los suyos `lead` o `destacado`. Se
+ * escapa hacia el lado correcto: callar cuando no se sabe es lo que ha hecho
+ * esto desde el principio, y enseñar un nombre inventado como si fuera el
+ * estilo aplicado es peor que no enseñar ninguno. */
+const TYPE_WORD =
+  /(^|-)(text|type|font|heading|title|subtitle|body|label|caption|display|overline|eyebrow|lead|quote|code|mono|paragraph|copy)(-|$)/
+const SIZE_WORD =
+  /(^|-)(\d?x{0,3}[sml]|xs|sm|md|lg|xl|[2-9]xl|tiny|small|medium|large|huge|regular|base|default|\d{2,4})$/
+
+function classStyle (rules) {
+  let best = null
+  let bestName = null
+  for (const selector of Object.keys(rules)) {
+    const m = selector.match(STYLEISH)
+    if (!m || rules[selector].length < 2) continue
+    const name = m[1].replace(STYLE_NOISE, '')
+    if (!name || !TYPE_WORD.test(name) || !SIZE_WORD.test(name)) continue
+    if (!best || rules[selector].length > rules[best].length) {
+      best = selector
+      bestName = name
+    }
+  }
+  if (!best) return null
+  return { stem: bestName, name: bestName, props: rules[best], off: null, from: 'class' }
+}
+
 function readTokens (match, computed) {
   const value = {}
   const vars = {}
@@ -1216,27 +1291,39 @@ function readTokens (match, computed) {
     vars[p.name] = normalise(p.value)
     raw[p.name] = String(p.value || '').trim()
   }
-  if (!Object.keys(vars).length) return null
+  /* Sin variables no hay tokens que enseñar, pero sí puede haber un estilo:
+   * vive en una clase y se reconoce por el nombre de su regla. Una hoja
+   * escrita a pelo, sin un solo `var()`, tiene derecho a esa línea. */
+  const anyVars = Object.keys(vars).length > 0
 
   const own = stack(match)
   /* `inherited[0]` es el padre, y de ahí hacia arriba. */
   const up = (match.inherited || []).map(stack)
   const out = {}
+  /* Qué regla manda en cada propiedad de tipografía, para reconocer el estilo
+   * cuando vive en una clase y no en una variable. */
+  const rules = {}
 
   for (const prop of Object.keys(TOKEN_PROPS)) {
     const painted = value[prop]
     if (painted == null) continue
     const names = TOKEN_PROPS[prop]
 
-    let declared = winner(own, names)
-    if (declared == null && INHERITED.has(prop)) {
+    let found = winner(own, names)
+    if (!found && INHERITED.has(prop)) {
       for (const level of up) {
-        declared = winner(level, names)
-        if (declared != null) break
+        found = winner(level, names)
+        if (found) break
       }
     }
 
-    if (declared == null) continue
+    if (!found) continue
+    const declared = found.value
+    /* De qué regla sale cada propiedad de tipografía: si una misma manda en
+     * varias, esa regla es el estilo de texto de este elemento. */
+    if (TYPE_PROPS.indexOf(prop) > -1 && found.selector) {
+      (rules[found.selector] = rules[found.selector] || []).push(prop)
+    }
 
     const used = varsIn(declared)
     if (used.length) {
@@ -1285,8 +1372,9 @@ function readTokens (match, computed) {
     const same = Object.keys(vars).find((n) => vars[n] === painted)
     if (same) out[prop] = { name: same, value: raw[same], loose: true }
   }
-  if (!Object.keys(out).length) return null
-  return { props: out, style: typeStyle(out, vars, raw, value) }
+  const style = (anyVars ? typeStyle(out, vars, raw, value) : null) || classStyle(rules)
+  if (!Object.keys(out).length && !style) return null
+  return { props: out, style }
 }
 
 ipcMain.handle('inspect-details', async (_e, { id, selector }) => {

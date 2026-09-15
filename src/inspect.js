@@ -618,8 +618,13 @@
   }
 
   /* El nombre del estilo se lee como un nombre y no como una variable, que es
-   * lo que es: el `body/xs` de toda la vida. Sin los guiones de delante. */
-  function styleName (stem) {
+   * lo que es: el `body/xs` de toda la vida. Sin los guiones de delante.
+   *
+   * Cuando el estilo viene de una clase el nombre ya llega limpio de casa, y
+   * es el que se usa tal cual. */
+  function styleName (style) {
+    if (style && style.name) return style.name
+    const stem = (style && style.stem) || ''
     const cut = stem.lastIndexOf('--')
     return cut > 0 ? stem.slice(cut + 2) : stem.replace(/^--/, '')
   }
@@ -639,13 +644,17 @@
        * puede deducir mirando si el nombre empieza por la raíz: con la
        * propiedad delante —`--font-size--text-body-xs`— la raíz va al final y
        * la comprobación fallaba, así que el estilo salía arriba y las filas
-       * seguían repitiéndolo debajo, que era lo peor de los dos mundos. */
-      if (style && style.props.indexOf(prop) > -1) return null
+       * seguían repitiéndolo debajo, que era lo peor de los dos mundos.
+       *
+       * Con un estilo que vive en una clase no se calla nada: ahí la variable
+       * de cada fila es el peldaño de la escala —`--text-5xl`— y no el nombre
+       * del estilo troceado, así que dice algo que el estilo no dice. */
+      if (style && style.from !== 'class' && style.props.indexOf(prop) > -1) return null
       return own
     }
     const off = style && style.off && style.off[prop]
     if (!off) return null
-    const name = styleName(style.stem)
+    const name = styleName(style)
     return {
       name: off.name,
       value: off.value,
@@ -718,8 +727,10 @@
       const style = data.style
         ? [{
             k: 'Estilo',
-            v: styleName(data.style.stem),
-            note: data.style.stem,
+            v: styleName(data.style),
+            /* De dónde sale, que es lo que hay que ir a buscar al CSS: la
+             * clase que lo define o la raíz de las variables. */
+            note: data.style.from === 'class' ? '.' + data.style.stem : data.style.stem,
             accent: true
           }]
         : []

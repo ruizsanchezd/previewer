@@ -303,8 +303,15 @@ md de qué. El nombre entero está en el tooltip, y es lo que se copia.
 ### El estilo, y no sus piezas
 
 Un estilo de texto en Figma —`body/xs`— es **una sola cosa** que lleva dentro el tamaño, el
-peso y la familia. En CSS no existe tal cosa: lo más parecido es un puñado de variables que
-comparten raíz.
+peso y la familia, y saber cuál está aplicado es media revisión: si pone `label/m`, sus
+piezas están bien por definición y no hay nada que comprobar debajo.
+
+En CSS no existe ese concepto, así que hay que reconocerlo, y se busca de las dos maneras
+en que los sistemas lo escriben: **un grupo de variables que comparten raíz**, o **una
+clase** cuya regla manda en varias propiedades a la vez. La segunda es la más común y va
+primero aquí abajo.
+
+Empezando por la de las variables, que es la más literal: un puñado que comparte raíz.
 
 ```
 --wp--custom--typography--text-label-md--font-size
@@ -328,6 +335,40 @@ Peso           600
 
 Si el estilo está puesto, sus piezas están bien por definición: no hay nada que mirar ahí
 abajo.
+
+#### Cuando el estilo es una clase
+
+Lo anterior vale cuando el sistema define el estilo como un grupo de variables. **La
+mayoría no lo hace**: el estilo es una **clase** —`.is-style-text-label-md`,
+`.text-heading-xl`— cuya regla trae dentro el tamaño, el peso y el interlineado, cada uno
+apuntando a una variable de la escala general.
+
+Ahí las variables de cada fila son correctas y no contestan a la pregunta: `--text-5xl` es
+el peldaño de la escala, no el estilo que alguien eligió aplicar. Así que se mira **de qué
+regla viene** cada propiedad de tipografía, y si una misma manda en dos o más, esa regla es
+el estilo:
+
+```
+TIPOGRAFÍA
+Estilo         text-label-md
+Familia        Figtree          --font-body
+Tamaño         16px             --text-base
+Interlineado   26px (1.63)      --leading-relaxed
+Peso           500              --font-weight-medium
+```
+
+Aquí las variables **no** se callan, al revés que con la raíz común: dicen el peldaño de la
+escala, que es otra cosa que el nombre del estilo y no una repetición suya.
+
+Y el nombre de la clase tiene que **parecer el de un estilo** para creérselo: categoría y
+peldaño, como se nombra un catálogo de tipografías (`label-md`, `heading-xl`, `body-sm`).
+Contar propiedades no bastaba, y la primera versión lo demostró sola: daba por estilo
+cualquier clase que tocara dos, así que un `.titulo` o un `.intro` de una hoja cualquiera
+salían como si fueran el sistema. Se escapará algún sistema que llame a los suyos `lead` o
+`destacado`, y se escapa hacia el lado correcto: un nombre inventado presentado como el
+estilo aplicado es peor que ninguno.
+
+#### Cuando el estilo es un grupo de variables
 
 Para llamarlo estilo hace falta o bien **dos propiedades usando la misma raíz**, o bien
 **una y que el sistema defina hermanas suyas** para otras propiedades. Lo primero solo se
