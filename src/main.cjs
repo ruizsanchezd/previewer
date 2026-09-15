@@ -387,7 +387,12 @@ function diagramHtml (row) {
     const values = d[ring].map((n, i) =>
       `<span class="bm-v bm-${SIDES[i]}${n === 0 ? ' zero' : ''}">${esc(String(n))}</span>`
     ).join('')
-    inner = `<div class="bm-ring bm-${ring}">` +
+    /* Como en el panel: el hueco de cada lado lo marca su propia cifra, o un
+     * `130` se mete encima del anillo de dentro. Aquí la monoespaciada es de
+     * 12px, así que el carácter ocupa algo más. */
+    const pad = (n) => Math.max(26, 12 + String(n).length * 7.4)
+    inner = `<div class="bm-ring bm-${ring}" ` +
+      `style="padding-left:${pad(d[ring][3])}px;padding-right:${pad(d[ring][1])}px">` +
       `<span class="bm-n">${esc(ring)}</span>${values}${inner}</div>`
   }
   const foot = row.token

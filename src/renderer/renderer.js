@@ -1011,6 +1011,12 @@ const BM_SIDES = ['t', 'r', 'b', 'l']
 const BM_NAMES = { t: 'top', r: 'right', b: 'bottom', l: 'left' }
 const RINGS = ['margin', 'padding']
 
+/* Lo que hay que reservar a un lado del anillo para que quepa su cifra: el
+ * hueco que deja la etiqueta al borde, más lo que ocupa el texto en la
+ * monoespaciada de 10px, más un respiro. Nunca menos que el mínimo, que es lo
+ * que le da forma de marco a un anillo lleno de ceros. */
+const bmPad = (value) => Math.max(21, 10 + String(value).length * 6.2) + 'px'
+
 const sideOf = (el) =>
   BM_NAMES[BM_SIDES.find((s) => el.classList.contains('ins-bm-' + s))] || null
 
@@ -1044,6 +1050,12 @@ function insDiagram (row) {
   for (const ring of d.rings.slice().reverse()) {
     const wrap = document.createElement('div')
     wrap.className = 'ins-bm-ring ins-bm-' + ring
+    /* El hueco de cada lado lo marca la cifra que va a ir ahí. Con uno fijo,
+     * un `130` —o cualquier cosa con decimal— no cabía y se metía encima del
+     * anillo de dentro. Los dos lados por separado, que casi nunca miden lo
+     * mismo y reservar en ambos lo que pide el peor deja el dibujo descentrado. */
+    wrap.style.paddingLeft = bmPad(d[ring][3])
+    wrap.style.paddingRight = bmPad(d[ring][1])
 
     const name = document.createElement('span')
     name.className = 'ins-bm-n'
