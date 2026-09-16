@@ -44,6 +44,8 @@ con cualquier URL: no dependemos de iframes ni de que la web permita ser embebid
   resalte y las cotas. Es el único archivo que corre en tres sitios a la vez (el frame
   vivo, la captura y el renderer), y el porqué está explicado en su cabecera.
 - `src/renderer/` — el lienzo: paneles, pan/zoom, barra de herramientas, menús.
+- `src/welcome/index.html` — la página de bienvenida: los cuatro pasos básicos, en HTML
+  suelto y sin estilos compartidos, porque se carga dentro de los paneles y no en la app.
 
 ## Atajos y gestos
 
@@ -909,3 +911,9 @@ cuando dé pereza avisar al equipo de que hay versión nueva, no antes.
   quedas logueado en todos.
 - Los certificados autofirmados se aceptan sólo en hosts locales.
 - El estado (URL, paneles, posición del lienzo, sets) se guarda en `localStorage`.
+- **La primera vez no hay URL por defecto.** La barra sale vacía y los paneles cargan
+  `src/welcome/index.html`, que explica los cuatro pasos: pegar la URL, elegir
+  dispositivos, guardar el set y el modo inspección. Antes arrancaban en
+  `localhost:3000`, que casi siempre era una pantalla en blanco. Esa página cuenta como
+  «sin URL»: no se guarda en el estado ni en los sets, así que a partir de la segunda vez
+  se abre en lo último que cargaste, como siempre.

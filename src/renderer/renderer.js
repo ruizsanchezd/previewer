@@ -28,8 +28,23 @@ let guestPreload = null
 let inspectSource = null
 let uid = 0
 
+/* La primera vez no hay URL que restaurar, y un about:blank en cada panel no
+ * explica nada: los paneles arrancan en esta página local con los cuatro pasos
+ * básicos. Cuenta como «sin URL», así que la barra sale vacía y no se guarda. */
+const WELCOME_URL = new URL('../welcome/index.html', location.href).href
+
+function isWelcome (url) {
+  return !url || url === WELCOME_URL || url === 'about:blank'
+}
+
+/* Pinta la barra de URL: el punto queda apagado mientras no haya URL propia. */
+function showUrl (url) {
+  urlInput.value = isWelcome(url) ? '' : url
+  urlStatus.className = 'scheme' + (isWelcome(url) ? '' : (isLocal(url) ? ' local' : ' remote'))
+}
+
 const state = {
-  url: 'http://localhost:3000',
+  url: '',
   canvas: { x: 60, y: 40, scale: 0.55 },
   sync: { scroll: true, click: true, nav: true },
   scrollMode: 'ratio',
@@ -367,9 +382,8 @@ function replaceSet (set) {
 
 function applyUrl (url) {
   const target = normalizeUrl(url)
-  state.url = target
-  urlInput.value = target
-  urlStatus.className = 'scheme ' + (isLocal(target) ? 'local' : 'remote')
+  state.url = isWelcome(target) ? '' : target
+  showUrl(state.url)
 }
 
 function currentSet () {
@@ -515,7 +529,7 @@ function onGuestMessage (p, channel, data) {
       break
 
     case 'page-ready':
-      urlStatus.className = 'scheme ' + (isLocal(data.href) ? 'local' : 'remote')
+      urlStatus.className = 'scheme' + (isWelcome(data.href) ? '' : (isLocal(data.href) ? ' local' : ' remote'))
       break
   }
 }
@@ -530,9 +544,8 @@ function broadcast (from, channel, payload) {
 let navLock = false
 
 function propagateNav (from, url) {
-  urlInput.value = url
-  state.url = url
-  urlStatus.className = 'scheme ' + (isLocal(url) ? 'local' : 'remote')
+  state.url = isWelcome(url) ? '' : url
+  showUrl(state.url)
   save()
   if (!state.sync.nav || navLock) return
   navLock = true
@@ -565,7 +578,7 @@ function isLocal (url) {
 
 function normalizeUrl (raw) {
   const value = (raw || '').trim()
-  if (!value) return 'about:blank'
+  if (!value) return WELCOME_URL
   if (/^[a-z]+:\/\//i.test(value) || value === 'about:blank') return value
   if (/^localhost|^127\.0\.0\.1|^0\.0\.0\.0|^\[::1\]|^\d+\.\d+\.\d+\.\d+/.test(value)) {
     return 'http://' + value
@@ -599,7 +612,7 @@ function loadAll (url) {
   applyUrl(url)
   navLock = true
   for (const p of state.panels) {
-    try { p.webview.loadURL(state.url) } catch (_) {}
+    try { p.webview.loadURL(normalizeUrl(state.url)) } catch (_) {}
   }
   setTimeout(() => { navLock = false }, 500)
   save()
@@ -2027,8 +2040,7 @@ $('#scroll-mode').addEventListener('click', (e) => {
 })
 
 function syncChrome () {
-  urlInput.value = state.url
-  urlStatus.className = 'scheme ' + (isLocal(state.url) ? 'local' : 'remote')
+  showUrl(state.url)
   for (const btn of document.querySelectorAll('.toggle[data-sync]')) {
     btn.classList.toggle('on', !!state.sync[btn.dataset.sync])
   }
