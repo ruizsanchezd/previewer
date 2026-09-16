@@ -46,6 +46,11 @@ con cualquier URL: no dependemos de iframes ni de que la web permita ser embebid
 - `src/renderer/` — el lienzo: paneles, pan/zoom, barra de herramientas, menús.
 - `src/welcome/index.html` — la página de bienvenida: los cuatro pasos básicos, en HTML
   suelto y sin estilos compartidos, porque se carga dentro de los paneles y no en la app.
+  Los trozos de interfaz que acompañan a cada paso (la barra de URL, el menú de
+  dispositivos, el de sets, el inspector) están **redibujados en CSS, no son capturas**:
+  la página se ve a 390px y con el lienzo escalado, donde un recorte real llega borroso,
+  y así no se cargan imágenes de cientos de KB en cada panel. A cambio hay que repasarlos
+  si la interfaz de verdad cambia.
 
 ## Atajos y gestos
 
