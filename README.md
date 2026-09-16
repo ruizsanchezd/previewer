@@ -838,6 +838,10 @@ El ciclo completo, del cambio fusionado a los Macs del equipo:
    mensaje de Slack perdido.
 7. Avisar al equipo. Cada uno arrastra el DMG nuevo a Aplicaciones y **repite el paso de
    autorización** de abajo: la aprobación de macOS es por versión, no por app.
+8. Borrar las ramas ya fusionadas (`git branch -d <rama>`, y en el remoto si se subieron).
+   Con `-d`, no con `-D`: git se niega si queda algo sin fusionar, así que es imposible
+   perder trabajo por descuido. Lo publicado vive en `main` y en su tag; dejar ramas
+   viejas sólo hace ruido a la hora de saber qué está pendiente de verdad.
 
 No compiles en cada cambio: acumula mejoras y publica cuando la app ya se usaría así.
 Compilar cuesta un rato y no aporta nada mientras se itera.
