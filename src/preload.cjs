@@ -7,7 +7,7 @@ contextBridge.exposeInMainWorld('previewer', {
   clearStorage: (partition) => ipcRenderer.invoke('clear-storage', { partition }),
   capturePanel: (opts) => ipcRenderer.invoke('capture-panel', opts),
   inspectSource: () => ipcRenderer.invoke('inspect-source'),
-  platformFont: (id, selector) => ipcRenderer.invoke('platform-font', { id, selector }),
+  inspectDetails: (id, selector) => ipcRenderer.invoke('inspect-details', { id, selector }),
   reveal: (file) => ipcRenderer.invoke('reveal', { file }),
   platform: process.platform
 })

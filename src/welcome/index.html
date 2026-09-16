@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Previewer</title>
+<style>
+  /* Los colores son los de la app (src/renderer/styles.css), salvo el fondo:
+   * aquí es gris para que la página se despegue del negro del lienzo y se vea
+   * dónde empieza y acaba cada panel. */
+  :root {
+    --bg:        #191c21;
+    --bg-raised: #23272e;
+    --bg-input:  #1b1e23;
+    --line:      #333942;
+    --text:      #e6e8ec;
+    --text-dim:  #98a0ab;
+    --text-faint:#6b737e;
+    --accent:    #4c8dff;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100%; background: var(--bg); }
+  body {
+    color: var(--text);
+    font: 17px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    justify-content: center;
+    padding: 48px 24px 56px;
+  }
+  main { width: 100%; max-width: 580px; }
+
+  h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.02em; font-weight: 600; }
+  .lead { margin-top: 10px; color: var(--text-dim); font-size: 18px; }
+
+  ol { list-style: none; margin-top: 36px; display: grid; gap: 14px; }
+  li {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 20px 20px;
+    display: grid;
+    grid-template-columns: 30px 1fr;
+    gap: 14px;
+  }
+  .n {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-size: 15px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+  h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  p  { color: var(--text-dim); font-size: 15.5px; }
+
+  code, kbd {
+    font: 0.92em/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: #14171b;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 2px 5px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  /* ------------------------------------------------- réplicas de la UI
+   * Trozos de la interfaz redibujados en CSS, no capturas: se ven nítidos a
+   * cualquier tamaño (esta página vive dentro de paneles de 390px y encima
+   * escalados) y no cargan imágenes en cada panel. */
+  .ui {
+    margin-top: 14px;
+    background: #0b0c0e;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 13px;
+    overflow: hidden;
+  }
+  /* Un menú no ocupa el ancho de la ventana: el recuadro se ajusta a él para
+   * no dejar un hueco negro al lado. */
+  .ui.fit { width: fit-content; max-width: 100%; }
+  .ui-row { display: flex; align-items: center; gap: 6px; }
+  .ui-btn {
+    height: 26px; min-width: 26px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid #24282e; border-radius: 6px;
+    background: #141619; color: var(--text-dim);
+    font-size: 13px; flex: none;
+  }
+  .ui-pill { padding: 0 10px; color: var(--text); font-size: 12px; }
+  .ui-pill.on { border-color: var(--accent); color: #cfe0ff; background: #1e3865; }
+  .ui-url {
+    flex: 1; height: 26px; min-width: 0;
+    display: flex; align-items: center; gap: 8px;
+    border: 1px solid #24282e; border-radius: 6px;
+    background: #1b1e23; padding: 0 9px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #5d646e; flex: none; }
+  .dot.local { background: #37d67a; }
+  .mono { font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .typed { color: var(--text); }
+  .typed::after {
+    content: ''; display: inline-block; vertical-align: -2px;
+    width: 1px; height: 13px; margin-left: 1px; background: var(--accent);
+  }
+  .ghost { color: var(--text-faint); }
+
+  .ui-menu {
+    margin-top: 6px; width: 232px; max-width: 100%;
+    border: 1px solid #24282e; border-radius: 8px;
+    background: #141619; padding: 5px;
+  }
+  .ui-menu.right { margin-left: auto; }
+  .ui-group {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--text-faint); padding: 6px 8px 3px;
+  }
+  .ui-item {
+    display: flex; justify-content: space-between; gap: 10px;
+    padding: 5px 8px; border-radius: 5px; font-size: 12px; color: var(--text);
+  }
+  .ui-item .size { color: var(--text-faint); }
+  .ui-item.sel { background: #ffffff0f; }
+  .ui-sep { height: 1px; background: #24282e; margin: 5px 0; }
+
+  .ui-panelbar {
+    display: flex; align-items: center; gap: 7px;
+    height: 30px; padding: 0 8px;
+    border: 1px solid #24282e; border-bottom: 0;
+    border-radius: 7px 7px 0 0; background: #141619;
+  }
+  .ui-panelbar .name { font-size: 12px; }
+  .ui-panelbar .size { font-size: 11px; color: var(--text-faint); }
+  .ui-panelbar .acts { margin-left: auto; display: flex; align-items: center; gap: 6px; color: var(--text-faint); }
+  .ui-crosshair { color: var(--accent); display: flex; }
+
+  .ui-ins { border: 1px solid #24282e; border-radius: 0 0 7px 7px; background: #0e1013; padding: 8px; }
+  .ins-sec { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-faint); padding: 2px 4px 5px; }
+  .ins-row { display: flex; align-items: center; gap: 8px; padding: 3px 4px; }
+  .ins-k { flex: 0 0 74px; font-size: 11px; color: var(--text-dim); }
+  .ins-v { font: 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); display: flex; align-items: center; gap: 6px; }
+  .swatch { width: 11px; height: 11px; border-radius: 3px; border: 1px solid #ffffff2b; flex: none; }
+  .token { background: #93a9c933; color: #cbd9ec; border-radius: 4px; padding: 2px 5px; font-size: 10.5px; }
+
+  footer {
+    margin-top: 30px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+    color: var(--text-faint);
+    font-size: 14.5px;
+  }
+  footer p + p { margin-top: 8px; }
+  footer code { color: var(--text-dim); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Cómo usar Previewer</h1>
+  <p class="lead">Una misma página, en todos los tamaños a la vez.</p>
+
+  <ol>
+    <li>
+      <span class="n">1</span>
+      <div>
+        <h2>Pega tu URL arriba</h2>
+        <p>Vale todo: <code>localhost:3000</code>, <code>:3000</code> o un dominio entero.
+          Todos los paneles navegan, hacen scroll y clican juntos.</p>
+        <div class="ui">
+          <div class="ui-row">
+            <span class="ui-btn">‹</span>
+            <span class="ui-btn">›</span>
+            <span class="ui-btn">⟳</span>
+            <span class="ui-url">
+              <span class="dot local"></span>
+              <span class="mono typed">localhost:3000</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </li>
+
+    <li>
+      <span class="n">2</span>
+      <div>
+        <h2>Elige los dispositivos</h2>
+        <p>Móviles, tablets, escritorio, breakpoints o el tamaño que escribas. Cada panel
+          se mueve y se redimensiona en el lienzo.</p>
+        <div class="ui fit">
+          <div class="ui-row"><span class="ui-btn ui-pill on">+ Dispositivo</span></div>
+          <div class="ui-menu">
+            <div class="ui-group">Móvil</div>
+            <div class="ui-item sel"><span>iPhone 15</span><span class="size mono">393×852</span></div>
+            <div class="ui-item"><span>Pixel 8</span><span class="size mono">412×915</span></div>
+            <div class="ui-group">Escritorio</div>
+            <div class="ui-item"><span>Laptop pequeño</span><span class="size mono">1280×800</span></div>
+            <div class="ui-sep"></div>
+            <div class="ui-item"><span class="ghost mono">1280x800</span><span class="size">Añadir</span></div>
+          </div>
+        </div>
+      </div>
+    </li>
+
+    <li>
+      <span class="n">3</span>
+      <div>
+        <h2>Guárdalo como set</h2>
+        <p>Un set recuerda la composición y la URL. Otro día lo abres y el lienzo aparece
+          exactamente igual.</p>
+        <div class="ui fit">
+          <div class="ui-row"><span class="ui-btn ui-pill" style="margin-left:auto">Sets guardados</span></div>
+          <div class="ui-menu right">
+            <div class="ui-group">Tus sets</div>
+            <div class="ui-item sel"><span>Landing</span><span class="size">3 paneles</span></div>
+            <div class="ui-item"><span>Checkout móvil</span><span class="size">2 paneles</span></div>
+            <div class="ui-sep"></div>
+            <div class="ui-item"><span>Guardar el lienzo actual…</span></div>
+          </div>
+        </div>
+      </div>
+    </li>
+
+    <li>
+      <span class="n">4</span>
+      <div>
+        <h2>Inspecciona sin abrir devtools</h2>
+        <p>La retícula del título de un panel enciende el <strong>modo inspección</strong>:
+          colores, tipografía y medidas del elemento que señales. Con <kbd>⇧</kbd> + clic
+          fijas uno y mides la distancia hasta otro.</p>
+        <div class="ui">
+          <div class="ui-panelbar">
+            <span class="name">iPhone 15</span>
+            <span class="size mono">393×852</span>
+            <span class="acts">
+              <span class="ui-crosshair" aria-hidden="true">
+                <svg viewBox="0 0 16 16" width="13" height="13" fill="none"
+                     stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                  <path d="M8 1.5v3.2M8 11.3v3.2M1.5 8h3.2M11.3 8h3.2"/>
+                  <circle cx="8" cy="8" r="2.9"/>
+                </svg>
+              </span>
+              <span>◐</span><span>⋯</span><span>✕</span>
+            </span>
+          </div>
+          <div class="ui-ins">
+            <div class="ins-sec">Color</div>
+            <div class="ins-row">
+              <span class="ins-k">Fondo</span>
+              <span class="ins-v"><span class="swatch" style="background:#4c8dff"></span>#4C8DFF
+                <span class="token">--brand-500</span></span>
+            </div>
+            <div class="ins-sec">Tipografía</div>
+            <div class="ins-row">
+              <span class="ins-k">Estilo</span>
+              <span class="ins-v">Inter 600 · 18/24 <span class="token">.title-m</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </li>
+  </ol>
+
+  <footer>
+    <p>El menú <code>⋯</code> de cada panel guarda una captura de la página entera, con el
+      peso justo para que Slack la previsualice.</p>
+    <p>Esta pantalla desaparece en cuanto cargues tu primera URL.</p>
+  </footer>
+</main>
+</body>
+</html>

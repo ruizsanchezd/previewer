@@ -331,6 +331,30 @@
     }
   }
 
+  /* Los cuatro lados de un anillo en números sueltos, que es lo que necesita
+   * un dibujo. `sideList` sigue existiendo y sigue dando la misma medida en
+   * texto: es lo que puede leer quien no dibuja cajas. */
+  function sides (cs, prefix, suffix) {
+    return ['top', 'right', 'bottom', 'left']
+      .map((s) => Math.round((parseFloat(cs[prefix + '-' + s + (suffix || '')]) || 0) * 10) / 10)
+  }
+
+  /* La caja por dentro: el contenido va en el centro y cada anillo alrededor.
+   * El rect es siempre borde incluido, así que el contenido es lo que queda al
+   * descontar borde y padding. */
+  function model (cs, r) {
+    const border = sides(cs, 'border', '-width')
+    const padding = sides(cs, 'padding')
+    const size = (n) => Math.round(n * 10) / 10
+    return {
+      margin: sides(cs, 'margin'),
+      border,
+      padding,
+      w: size(Math.max(0, r.width - border[1] - border[3] - padding[1] - padding[3])),
+      h: size(Math.max(0, r.height - border[0] - border[2] - padding[0] - padding[2]))
+    }
+  }
+
   function radius (cs) {
     const v = ['top-left', 'top-right', 'bottom-right', 'bottom-left']
       .map((c) => cs['border-' + c + '-radius'])
@@ -423,6 +447,7 @@
         position: cs.position === 'static' ? null : cs.position,
         padding: sideList(cs, 'padding'),
         margin: sideList(cs, 'margin'),
+        model: model(cs, r),
         gap: cs.display.indexOf('flex') >= 0 || cs.display.indexOf('grid') >= 0
           ? (parseFloat(cs.gap) ? cs.gap : null) : null,
         radius: radius(cs),
@@ -519,6 +544,142 @@
     return data
   }
 
+  /* El diagrama de la caja, al estilo del de unas DevTools.
+   *
+   * `padding: 12px 12px 12px 28px` es correcto y hay que contar con los dedos
+   * para saber cuál de los cuatro es el de la izquierda. Dibujado, no hay que
+   * contar nada: el número está en el lado del que habla.
+   *
+   * Sale sólo cuando hay padding o margen, que es lo que viene a desambiguar.
+   * El borde no tiene anillo: casi siempre mide un píxel, así que el marco no
+   * se ve y las tres cifras que trae son ruido entre las dos que importan. Su
+   * grosor lado a lado ya lo cuenta la fila «Borde» de la sección de color.
+   *
+   * Los anillos que están a cero no se dibujan: tres marcos de ceros alrededor
+   * del único número que dice algo es justo el ruido que veníamos a quitar. */
+  function boxModel (data) {
+    const m = data && data.box && data.box.model
+    if (!m) return null
+    const has = (ring) => m[ring].some((n) => n !== 0)
+    if (!has('padding') && !has('margin')) return null
+    return {
+      rings: ['margin', 'padding'].filter(has),
+      margin: m.margin,
+      border: m.border,
+      padding: m.padding,
+      w: m.w,
+      h: m.h
+    }
+  }
+
+  /* De qué variable sale cada fila.
+   *
+   * `data.tokens` no lo calcula este archivo: lo trae el proceso principal por
+   * el protocolo de DevTools, que es el único que sabe lo que decía el CSS
+   * antes de que el navegador resolviera los `var()` (ver readTokens en
+   * main.cjs). Llega unos milisegundos después que el resto y el panel se
+   * repinta; aquí sólo se reparte a la fila que le toca, para que la columna de
+   * la captura enseñe exactamente lo mismo sin decidirlo por su cuenta. */
+  /* Lo que se lee en la línea de debajo del valor, decidido aquí una vez para
+   * que el panel y la columna de la captura digan lo mismo. `warn` es lo que
+   * se pinta en ámbar: no está roto —hoy se ve igual de bien—, está suelto. */
+  function tokenFor (data, prop) {
+    const t = (data.tokens && data.tokens[prop]) || null
+    if (!t) return null
+    const short = shortToken(t.name)
+    return {
+      name: t.name,
+      value: t.value,
+      short,
+      label: t.loose ? 'a mano · hay ' + short : short,
+      warn: !!t.loose,
+      /* Los otros tokens del sistema que llevan este mismo color. No caben en
+       * la línea ni deben —uno es la respuesta y el resto es el mapa—, pero en
+       * el tooltip cuestan cero y contestan a «¿y no sería aquel otro?». */
+      alt: t.alt && t.alt.length ? t.alt : null
+    }
+  }
+
+  /* Los dos últimos tramos de un nombre de token, que son los que informan.
+   *
+   * `--wp--preset--color--ds-content-high` no cabe en un panel de 340px y sale
+   * partido en dos líneas, y de esos cuatro tramos los dos primeros son la
+   * fontanería del sistema: se repiten igual en todos los tokens, así que
+   * dentro del panel no distinguen nada.
+   *
+   * Dos y no uno, que era lo primero que probé: el último tramo se explica
+   * solo en `ds-content-high` y no se explica nada en `--wp--custom--spacing--md`,
+   * donde quedarse con `md` es quedarse sin saber md de qué. El de delante es
+   * la categoría —`spacing`, `radius`, `color`— y con él el nombre vuelve a
+   * identificar algo.
+   *
+   * El nombre entero sigue estando en el tooltip, y es lo que se copia al
+   * pulsarlo. Un sistema de un solo guion —`--color-text`— no tiene tramos que
+   * quitar y se queda como está. */
+  function shortToken (name) {
+    const parts = name.replace(/^--/, '').split('--')
+    return '--' + (parts.length > 2 ? parts.slice(-2).join('--') : parts.join('--'))
+  }
+
+  /* El nombre del estilo se lee como un nombre y no como una variable, que es
+   * lo que es: el `body/xs` de toda la vida. Sin los guiones de delante.
+   *
+   * Cuando el estilo viene de una clase el nombre ya llega limpio de casa, y
+   * es el que se usa tal cual. */
+  function styleName (style) {
+    if (style && style.name) return style.name
+    const stem = (style && style.stem) || ''
+    const cut = stem.lastIndexOf('--')
+    return cut > 0 ? stem.slice(cut + 2) : stem.replace(/^--/, '')
+  }
+
+  /* Qué variable enseñar en una fila de tipografía, que ya no es «la suya».
+   *
+   * Si el elemento tiene un estilo puesto y esta propiedad es una de sus
+   * piezas, no se enseña nada: el estilo ya está dicho arriba y repetir
+   * `--…--text-label-md--font-size` debajo del tamaño es decir dos veces lo
+   * mismo, con la mitad informativa enterrada. Lo que queda por mirar es lo
+   * que se sale, y eso sí se dice. */
+  function typeToken (data, prop) {
+    const style = data.style
+    const own = tokenFor(data, prop)
+    if (own) {
+      /* La variable de cada fila se enseña siempre, también cuando es una pieza
+       * del estilo de arriba.
+       *
+       * Antes se callaba, por no repetir `--…--text-body-md--font-size` debajo
+       * del tamaño cuando el estilo ya estaba dicho. Pero callar dejaba la
+       * radiografía a medias justo en los sistemas que mejor funcionan: con el
+       * estilo puesto no se veía ni una variable, y «¿de dónde sale este
+       * interlineado?» seguía teniendo respuesta propia —y es la que se copia
+       * para pegarla en otro sitio—.
+       *
+       * Así que se enseña, marcada como pieza para que se pinte apagada: es
+       * una confirmación, no algo que haya que mirar. Qué propiedades componen
+       * el estilo lo dice `style.props` y no el nombre, que los dos órdenes
+       * existen —`--font-size--text-body-xs` lleva la raíz al final—. */
+      const piece = style && style.from !== 'class' && style.from !== 'rule' &&
+        style.props.indexOf(prop) > -1
+      return piece ? Object.assign({}, own, { piece: true }) : own
+    }
+    const off = style && style.off && style.off[prop]
+    if (!off) return null
+    const name = styleName(style)
+    return {
+      name: off.name,
+      value: off.value,
+      short: shortToken(off.name),
+      /* Las dos maneras de salirse, y no dicen lo mismo ni de lejos: haber
+       * escrito a mano el valor que el estilo ya traía es una desconexión que
+       * hoy no se nota, y traer otro distinto es una decisión que alguien tomó
+       * —a lo mejor a propósito— y que conviene ver al lado del número. */
+      label: off.same
+        ? 'a mano · lo trae ' + name
+        : 'fuera de ' + name + ' · dice ' + off.value,
+      warn: true
+    }
+  }
+
   /* Display groups. The renderer paints these as DOM and the capture writes
    * them into the info strip, so the grouping and the wording are decided
    * once, here, and the two never drift apart. */
@@ -526,10 +687,30 @@
     if (!data) return []
     const out = []
     const box = [{ k: 'Tamaño', v: data.box.w + ' × ' + data.box.h }]
-    if (data.box.padding) box.push({ k: 'Padding', v: data.box.padding })
-    if (data.box.margin) box.push({ k: 'Margin', v: data.box.margin })
-    if (data.box.gap) box.push({ k: 'Gap', v: data.box.gap })
-    if (data.box.radius) box.push({ k: 'Radio', v: data.box.radius })
+    /* Una sola fila para el padding y el margen, con el dibujo dentro y la
+     * misma medida en texto: quien sepa pintarlo pinta la caja, quien no
+     * —la franja ancha de una captura— imprime la línea de siempre, y lo que
+     * se cuenta se decide aquí una vez para los dos. */
+    const diagram = boxModel(data)
+    if (diagram) {
+      /* El token del padding sólo cuando los cuatro lados miden lo mismo: se
+       * lee del lado de arriba, y con lados distintos explicaría uno solo
+       * mientras el pie del dibujo parece hablar de los cuatro. */
+      const even = diagram.padding.every((n) => n === diagram.padding[0])
+      box.push({
+        k: 'Espaciado',
+        v: [
+          data.box.padding ? 'padding ' + data.box.padding : null,
+          data.box.margin ? 'margin ' + data.box.margin : null
+        ].filter(Boolean).join(' · '),
+        diagram,
+        token: even ? tokenFor(data, 'padding-top') : null
+      })
+    }
+    if (data.box.gap) box.push({ k: 'Gap', v: data.box.gap, token: tokenFor(data, 'row-gap') })
+    if (data.box.radius) {
+      box.push({ k: 'Radio', v: data.box.radius, token: tokenFor(data, 'border-top-left-radius') })
+    }
     /* `display: block` y `position: static` son el valor por defecto de casi
      * todo: una fila que casi nunca dice nada es una fila que se salta.
      *
@@ -549,28 +730,72 @@
     out.push({ title: 'Caja', rows: box })
 
     if (data.text) {
+      /* El estilo, arriba y una sola vez. Es la única línea de la sección que
+       * de verdad hay que leer: si está puesto, sus piezas están bien por
+       * definición y las cuatro filas de debajo son la confirmación, no la
+       * pregunta. */
+      const name = data.style ? styleName(data.style) : null
+      const style = data.style
+        ? [{
+            /* «Estilo» sólo cuando de verdad hay uno con nombre de catálogo. Si
+             * la tipografía la decide una regla que no se llama como un token
+             * —un `h2`, un `.card-title`— se dice de dónde sale y no se le pone
+             * nombre de estilo a lo que no lo tiene. Es la misma respuesta con
+             * distinta certeza, y la diferencia se ve: sin la pastilla azul. */
+            k: data.style.from === 'rule' ? 'Definido en' : 'Estilo',
+            v: name,
+            /* De dónde sale, que es lo que hay que ir a buscar al CSS: el
+             * selector que lo define o la raíz de las variables. */
+            note: data.style.stem === name ? null : data.style.stem,
+            accent: data.style.from !== 'rule'
+          }]
+        : []
       out.push({
         title: 'Tipografía',
-        rows: [
+        rows: style.concat([
           /* La fuente que pinta va primero y lo que pide el CSS queda como
            * etiqueta. Las dos cosas hacen falta y no son la misma pregunta:
            * «Helvetica [-apple-system]» se lee como «pediste eso y te han
            * dado esto», que es justo el fallo que se quiere ver. */
           data.text.rendered && data.text.rendered !== data.text.declared
-            ? { k: 'Familia', v: data.text.rendered, tag: data.text.declared, note: data.text.stack }
-            : { k: 'Familia', v: data.text.rendered || data.text.family, note: data.text.stack },
-          { k: 'Tamaño', v: data.text.size },
-          { k: 'Interlineado', v: data.text.lineHeight },
-          { k: 'Peso', v: data.text.weight },
-          { k: 'Espaciado', v: data.text.letterSpacing }
-        ].concat(data.text.transform ? [{ k: 'Transform', v: data.text.transform }] : [])
+            ? {
+                k: 'Familia',
+                v: data.text.rendered,
+                tag: data.text.declared,
+                note: data.text.stack,
+                token: typeToken(data, 'font-family')
+              }
+            : {
+                k: 'Familia',
+                v: data.text.rendered || data.text.family,
+                note: data.text.stack,
+                token: typeToken(data, 'font-family')
+              },
+          { k: 'Tamaño', v: data.text.size, token: typeToken(data, 'font-size') },
+          { k: 'Interlineado', v: data.text.lineHeight, token: typeToken(data, 'line-height') },
+          { k: 'Peso', v: data.text.weight, token: typeToken(data, 'font-weight') },
+          { k: 'Espaciado', v: data.text.letterSpacing, token: typeToken(data, 'letter-spacing') }
+        ]).concat(data.text.transform ? [{ k: 'Transform', v: data.text.transform }] : [])
       })
     }
 
     const colors = []
-    if (data.colors.text) colors.push({ k: 'Texto', v: data.colors.text, swatch: data.colors.text })
-    if (data.colors.bg) colors.push({ k: 'Fondo', v: data.colors.bg, swatch: data.colors.bgRaw })
-    else if (data.colors.inherited) {
+    if (data.colors.text) {
+      colors.push({
+        k: 'Texto',
+        v: data.colors.text,
+        swatch: data.colors.text,
+        token: tokenFor(data, 'color')
+      })
+    }
+    if (data.colors.bg) {
+      colors.push({
+        k: 'Fondo',
+        v: data.colors.bg,
+        swatch: data.colors.bgRaw,
+        token: tokenFor(data, 'background-color')
+      })
+    } else if (data.colors.inherited) {
       colors.push({
         k: 'Fondo',
         v: data.colors.inherited.value,
@@ -579,7 +804,14 @@
         swatch: data.colors.inherited.raw
       })
     }
-    if (data.border) colors.push({ k: 'Borde', v: data.border, swatch: data.borderRaw })
+    if (data.border) {
+      colors.push({
+        k: 'Borde',
+        v: data.border,
+        swatch: data.borderRaw,
+        token: tokenFor(data, 'border-top-color')
+      })
+    }
     if (data.colors.image) colors.push({ k: 'Imagen de fondo', v: data.colors.image })
     if (data.shadow) colors.push({ k: 'Sombra', v: data.shadow })
     if (data.contrast) {
@@ -645,9 +877,71 @@
         inset 0 0 0 1px #ffffff1f;
       font-size: calc(11.5px * var(--pk)); line-height: 1.4; color: #d7dae0; }
     #${LAYER_ID} .pi-tip b { color: #fff; font-weight: 600; }
+    #${LAYER_ID} .pi-band { position: absolute; }
+    #${LAYER_ID} .pi-margin { background: #f5a62361; }
+    #${LAYER_ID} .pi-padding { background: #6fc47a5c; }
     #${LAYER_ID} .pi-line { position: absolute; background: ${HOVER}; }
     #${LAYER_ID} .pi-guide { position: absolute; background: ${HOVER}66; }
   `
+
+  /* Las bandas de margen y padding pintadas sobre la propia página.
+   *
+   * El diagrama contesta en números y esto contesta a ojo, que para «¿este
+   * hueco de 12px es de verdad el margen de esto?» es la diferencia entre
+   * discutirlo y verlo: pasas el ratón por el número del panel y la banda cae
+   * justo encima del hueco, o no cae.
+   *
+   * Los colores son los de siempre en un inspector —naranja el margen, verde
+   * el padding— porque es un lenguaje ya aprendido. El resalte del elemento
+   * sigue sin teñirse, que es otra cosa: aquello falsearía el color que la
+   * captura va a demostrar, y esto vive sólo mientras el ratón está en el
+   * panel y nunca llega a una imagen. */
+  function bands (root, el, spec) {
+    const cs = getComputedStyle(el)
+    const r = el.getBoundingClientRect()
+    const n = (prop) => parseFloat(cs[prop]) || 0
+    let outer, inner
+
+    if (spec.ring === 'margin') {
+      inner = { left: r.left, top: r.top, right: r.right, bottom: r.bottom }
+      outer = {
+        left: r.left - n('margin-left'),
+        top: r.top - n('margin-top'),
+        right: r.right + n('margin-right'),
+        bottom: r.bottom + n('margin-bottom')
+      }
+    } else {
+      outer = {
+        left: r.left + n('border-left-width'),
+        top: r.top + n('border-top-width'),
+        right: r.right - n('border-right-width'),
+        bottom: r.bottom - n('border-bottom-width')
+      }
+      inner = {
+        left: outer.left + n('padding-left'),
+        top: outer.top + n('padding-top'),
+        right: outer.right - n('padding-right'),
+        bottom: outer.bottom - n('padding-bottom')
+      }
+    }
+
+    /* El marco entre los dos rectángulos, en cuatro tiras. Las de los lados no
+     * llegan a las esquinas: ahí ya está la de arriba o la de abajo, y
+     * solaparlas duplicaría la transparencia y pintaría las esquinas más
+     * oscuras que el resto de la banda. */
+    const parts = {
+      top: [outer.left, outer.top, outer.right - outer.left, inner.top - outer.top],
+      bottom: [outer.left, inner.bottom, outer.right - outer.left, outer.bottom - inner.bottom],
+      left: [outer.left, inner.top, inner.left - outer.left, inner.bottom - inner.top],
+      right: [inner.right, inner.top, outer.right - inner.right, inner.bottom - inner.top]
+    }
+    const sides = spec.side ? [spec.side] : ['top', 'bottom', 'left', 'right']
+    for (const side of sides) {
+      const [x, y, w, h] = parts[side] || []
+      if (!(w > 0 && h > 0)) continue
+      add(root, 'pi-band pi-' + spec.ring, `left:${x}px;top:${y}px;width:${w}px;height:${h}px`)
+    }
+  }
 
   function layer (k) {
     let el = document.getElementById(LAYER_ID)
@@ -1017,6 +1311,10 @@
      * fijado». Sin nada seleccionado no hay nada que medir. */
     const measuring = !!selRect
 
+    /* Antes que nada: son una superficie de fondo, y el contorno del elemento
+     * tiene que seguir viéndose por encima. */
+    if (selRect && spec.bands) bands(root, sel, spec.bands)
+
     if (selRect) add(root, 'pi-box pi-sel', box(selRect))
     if (hovRect) {
       add(root, 'pi-box ' + (spec.locked ? 'pi-lock' : measuring ? 'pi-hov' : 'pi-aim'),
@@ -1077,5 +1375,5 @@
     if (el) el.remove()
   }
 
-  return { resolve, pick, read, sections, label, overlay, hide, clear }
+  return { resolve, pick, read, sections, boxModel, label, overlay, hide, clear }
 })

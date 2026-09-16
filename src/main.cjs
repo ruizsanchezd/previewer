@@ -320,9 +320,15 @@ function inspectBlock (ins) {
         ? `<span style="display:inline-block;width:11px;height:11px;border-radius:2px;` +
           `background:${esc(row.swatch)};box-shadow:inset 0 0 0 1px #ffffff66;margin-right:6px"></span>`
         : ''
+      /* Sin dibujo y sin dos líneas: esta franja es la de repuesto y va a lo
+       * ancho, así que la variable se cuelga detrás del valor y ya. */
+      const token = row.token
+        ? `<span style="color:${row.token.warn ? '#d9a469' : row.token.piece ? '#6b7788' : '#93a9c9'};padding-left:7px">` +
+          `${esc(row.token.label)}</span>`
+        : ''
       return `<div style="display:flex;gap:8px;align-items:baseline;padding:1px 0">` +
         `<span style="color:#5d646e;flex:0 0 96px">${esc(row.k)}</span>` +
-        `<span style="color:#e6e8ec;flex:1 1 auto;word-break:break-word">${swatch}${esc(row.v)}</span>` +
+        `<span style="color:#e6e8ec;flex:1 1 auto;word-break:break-word">${swatch}${esc(row.v)}${token}</span>` +
         `</div>`
     }).join('')
     return `<div style="break-inside:avoid;padding-bottom:16px">` +
@@ -367,20 +373,60 @@ function inspectBlock (ins) {
  * franja de arriba no se dibuja: sería la misma información dos veces. */
 const COLUMN_CSS_WIDTH = 380
 
+/* El mismo diagrama de caja que pinta el panel, con la misma decisión detrás
+ * —la toma `boxModel` en inspect.js— y el dibujo rehecho aquí porque esta
+ * columna se pinta en su propia ventana y no comparte la hoja de estilos.
+ *
+ * En una captura vale incluso más que en vivo: es la imagen que acaba en Slack
+ * y quien la mira no tiene el elemento delante para volver a medirlo. */
+function diagramHtml (row) {
+  const d = row.diagram
+  const SIDES = ['t', 'r', 'b', 'l']
+  let inner = `<div class="bm-c">${esc(d.w + ' × ' + d.h)}</div>`
+  for (const ring of d.rings.slice().reverse()) {
+    const values = d[ring].map((n, i) =>
+      `<span class="bm-v bm-${SIDES[i]}${n === 0 ? ' zero' : ''}">${esc(String(n))}</span>`
+    ).join('')
+    /* Como en el panel: el hueco de cada lado lo marca su propia cifra, o un
+     * `130` se mete encima del anillo de dentro. Aquí la monoespaciada es de
+     * 12px, así que el carácter ocupa algo más. */
+    const pad = (n) => Math.max(26, 12 + String(n).length * 7.4)
+    inner = `<div class="bm-ring bm-${ring}" ` +
+      `style="padding-left:${pad(d[ring][3])}px;padding-right:${pad(d[ring][1])}px">` +
+      `<span class="bm-n">${esc(ring)}</span>${values}${inner}</div>`
+  }
+  const foot = row.token
+    ? `<div class="bm-foot"><span>padding</span>${tokenHtml(row.token)}</div>`
+    : ''
+  return `<div class="bm">${inner}${foot}</div>`
+}
+
+/* La variable, en la línea de debajo del valor. Aquí importa más que en el
+ * panel: la captura es lo que se manda, y quien la abre no tiene la página
+ * delante para ir a mirar de dónde salía ese color. */
+function tokenHtml (token) {
+  if (!token) return ''
+  const kind = token.warn ? ' loose' : token.piece ? ' piece' : ''
+  return `<span class="var${kind}">${esc(token.label)}</span>`
+}
+
 function columnHtml (head, ins) {
   const mono = 'ui-monospace,SFMono-Regular,Menlo,monospace'
   const sans = "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
 
   const sections = (ins.sections || []).map((sec) => {
     const rows = sec.rows.map((row) => {
+      if (row.diagram) return diagramHtml(row)
       const swatch = row.swatch
         ? `<span class="sw" style="background:${esc(row.swatch)}"></span>`
         : ''
       const tag = row.tag
         ? `<span class="tag${row.bad ? ' bad' : ''}">${esc(row.tag)}</span>`
         : ''
-      return `<div class="row"><span class="k">${esc(row.k)}</span>` +
-        `<span class="v">${swatch}${esc(row.v)}${tag}</span></div>`
+      return `<div class="row${row.accent ? ' is-style' : ''}">` +
+        `<span class="k">${esc(row.k)}</span>` +
+        `<span class="v"><span class="vt">${swatch}${esc(row.v)}</span>` +
+        `${tag}${tokenHtml(row.token)}</span></div>`
     }).join('')
     return `<div class="sec"><div class="t">${esc(sec.title.toUpperCase())}</div>${rows}</div>`
   }).join('')
@@ -419,12 +465,39 @@ function columnHtml (head, ins) {
     .t{color:#8a919c;font-size:12px;letter-spacing:.08em;padding-bottom:4px}
     .row{display:flex;gap:10px;align-items:baseline;padding:1px 0}
     .k{color:#5d646e;flex:0 0 104px;font-size:14px}
-    .v{color:#e6e8ec;flex:1 1 auto;min-width:0;font-size:14px;word-break:break-word}
+    .v{color:#e6e8ec;flex:1 1 auto;min-width:0;font-size:14px;
+      display:flex;align-items:baseline;flex-wrap:wrap;gap:5px}
+    .vt{flex:0 1 auto;min-width:0;word-break:break-word}
+    .row.is-style .vt{padding:1px 7px;border-radius:3px;background:#4c8dff26;color:#a9c9ff}
+    .var{flex:0 1 auto;min-width:0;padding:1px 6px;border-radius:3px;
+      background:#93a9c91f;color:#a8bcd8;font-size:12px;line-height:1.4;
+      overflow-wrap:anywhere}
+    .var.piece{background:#93a9c914;color:#7e8da0}
+    .var.loose{background:#d9a4691f;color:#d9a469}
+    .bm-foot{display:flex;align-items:baseline;gap:7px;padding:7px 2px 0}
+    .bm-foot>span:first-child{flex:none;font-size:12px;color:#5d646e}
+    .bm-foot .var{flex:0 1 auto}
     .sw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;
       box-shadow:inset 0 0 0 1px #ffffff66;vertical-align:baseline}
     .tag{margin-left:6px;padding:1px 5px;border-radius:3px;background:#ffffff1f;
       color:#8a919c;font-size:12px}
     .tag.bad{background:#ff5f5633;color:#ff8f88}
+    .bm{padding:8px 0 4px}
+    .bm-ring{position:relative;padding:24px 26px;border-radius:6px}
+    .bm-margin{background:#7a552e2b;box-shadow:inset 0 0 0 1px #c9924e54}
+    .bm-padding{background:#3f6b452b;box-shadow:inset 0 0 0 1px #6fb07a54}
+    .bm-n{position:absolute;top:4px;left:7px;font-size:11px;letter-spacing:.04em}
+    .bm-margin>.bm-n{color:#d9a469}
+    .bm-padding>.bm-n{color:#8cc596}
+    .bm-c{padding:9px 10px;border-radius:5px;background:#1e3865;
+      box-shadow:inset 0 0 0 1px #4c8dff5c;color:#a9c9ff;font-size:13px;
+      text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .bm-v{position:absolute;font-size:12px;line-height:1;color:#e6e8ec}
+    .bm-v.zero{color:#5d646e}
+    .bm-t{top:5px;left:50%;transform:translateX(-50%)}
+    .bm-b{bottom:5px;left:50%;transform:translateX(-50%)}
+    .bm-l{left:5px;top:50%;transform:translateY(-50%)}
+    .bm-r{right:5px;top:50%;transform:translateY(-50%)}
   </style></head><body>
     <div class="name">${esc(head.name)}</div>
     <div class="size">${esc(head.size)}</div>
@@ -888,7 +961,635 @@ function prettyFont (name) {
   return name.replace(/^\./, '').split('_')[0]
 }
 
-ipcMain.handle('platform-font', async (_e, { id, selector }) => {
+/* De qué variable sale cada valor.
+ *
+ * Una hoja de estilos dice `color: var(--color-text)` y para cuando la página
+ * está pintada eso ya es un `rgb(26, 26, 26)` y nadie puede saber de dónde
+ * venía: el navegador resuelve la variable antes de que el DOM la vea. Es la
+ * razón por la que hasta ahora había que abrir el inspector del navegador para
+ * comprobar si un color era el token que tocaba.
+ *
+ * El protocolo de DevTools sí lo sabe —es de donde sale el panel «Styles»— y
+ * devuelve las reglas *tal y como se escribieron*, con el `var()` sin resolver,
+ * incluyendo la cadena de herencia y las hojas de otro dominio. Ya teníamos la
+ * sesión abierta aquí para la fuente, así que es una llamada más en un viaje
+ * que ya se hacía.
+ *
+ * Qué propiedades se miran, y con qué atajos puede haberlas escrito alguien:
+ * `padding: var(--space-4)` es un `padding` en la regla y cuatro `padding-*`
+ * en el computado. */
+const TOKEN_PROPS = {
+  color: ['color'],
+  'background-color': ['background-color', 'background'],
+  'font-family': ['font-family', 'font'],
+  'font-size': ['font-size', 'font'],
+  'font-weight': ['font-weight', 'font'],
+  'line-height': ['line-height', 'font'],
+  'letter-spacing': ['letter-spacing'],
+  'border-top-left-radius': ['border-radius'],
+  'border-top-color': ['border-top-color', 'border-color', 'border-top', 'border'],
+  'padding-top': ['padding-top', 'padding'],
+  'row-gap': ['row-gap', 'gap'],
+  'column-gap': ['column-gap', 'gap']
+}
+
+/* Sólo se hereda lo que se hereda: buscar un `padding` en los padres daría el
+ * del contenedor, que no es el de este elemento ni tiene nada que ver. */
+const INHERITED = new Set([
+  'color', 'font-family', 'font-size', 'font-weight', 'line-height', 'letter-spacing'
+])
+
+/* Los valores que son una huella dactilar y no una casualidad. Ver el aviso
+ * «a mano» en readTokens. */
+const COLOURS = new Set(['color', 'background-color', 'border-top-color'])
+
+/* Cuál de los tokens que llevan este color es el que le interesa a alguien.
+ *
+ * Un sistema de diseño tiene dos pisos y sólo uno contesta a la pregunta. Abajo
+ * los primitivos —`--black`, `--grey-900`, `--blue-500`—, que son la paleta y
+ * no una decisión; arriba los semánticos —`--ds-content-high`,
+ * `--surface-default`—, que son el token que alguien eligió *para esto*. Saber
+ * que el negro de un texto es `--ds-content-high` sirve para revisar; saber que
+ * es `--black` es saber que es negro, que ya se veía.
+ *
+ * Esto sólo decide cuando hay que adivinar: si el CSS nombra una variable, ésa
+ * es la respuesta y aquí no se entra. */
+
+/* Se reconoce un primitivo por que se llama como un color: un nombre de la
+ * caja de lápices, con o sin peldaño detrás. */
+const PRIMITIVE = new RegExp('(^|-)(black|white|grey|gray|silver|red|blue|green|yellow' +
+  '|orange|purple|pink|brown|cyan|magenta|teal|indigo|violet|slate|zinc|neutral|stone' +
+  '|amber|lime|emerald|sky|rose|fuchsia|beige|ivory|gold)(-\\d{1,3})?$')
+
+/* Y un semántico bueno por que habla del mismo papel que la propiedad: el color
+ * de un texto se llama «content» o «text», el de un fondo «surface» o «bg». Con
+ * varios tokens del mismo color —que es lo normal en cuanto hay temas— es lo
+ * que distingue al que iba aquí de los otros cinco que son del mismo negro. */
+const ROLE = {
+  color: /(^|-)(content|text|txt|fg|foreground|ink|type|label|copy|body|heading|title|caption)(-|$)/,
+  'background-color': /(^|-)(bg|background|surface|fill|canvas|paper|layer|elevation)(-|$)/,
+  'border-top-color': /(^|-)(border|stroke|outline|line|divider|rule|edge)(-|$)/
+}
+
+function tokenRank (name, prop) {
+  const bare = name.replace(/^--/, '')
+  const role = ROLE[prop]
+  return (role && role.test(bare) ? 2 : 0) + (PRIMITIVE.test(bare) ? 0 : 1)
+}
+
+/* Las que componen un estilo de texto. En Figma esto es una sola cosa
+ * —`body/xs`, con su tamaño, su peso y su familia dentro— y en CSS no existe
+ * tal cosa: lo más parecido es un puñado de variables que comparten raíz,
+ * `--…--text-label-md--font-size` y sus hermanas. Es lo que busca typeStyle. */
+const TYPE_PROPS = ['font-family', 'font-size', 'font-weight', 'line-height', 'letter-spacing']
+
+/* `#1a1a1a` y `rgb(26, 26, 26)` son el mismo color y dos cadenas distintas, y
+ * la comparación se hace justo entre esas dos: una variable guarda el texto
+ * que se escribió y el computado siempre trae la forma larga. Sin esto, cada
+ * token escrito en hexadecimal —o sea, casi todos— quedaría sin detectar. */
+function normalise (value) {
+  const text = String(value == null ? '' : value).trim().toLowerCase().replace(/\s+/g, ' ')
+  const hex = text.match(/^#([0-9a-f]{3,8})$/)
+  if (!hex) return text.replace(/,\s*/g, ', ')
+  let d = hex[1]
+  if (d.length === 3 || d.length === 4) d = d.split('').map((c) => c + c).join('')
+  if (d.length !== 6 && d.length !== 8) return text
+  const n = (i) => parseInt(d.slice(i * 2, i * 2 + 2), 16)
+  if (d.length === 6) return `rgb(${n(0)}, ${n(1)}, ${n(2)})`
+  return `rgba(${n(0)}, ${n(1)}, ${n(2)}, ${Math.round((n(3) / 255) * 100) / 100})`
+}
+
+/* Un color escrito en canales sueltos, pasado a la forma que trae el computado.
+ *
+ * `--black: 0, 0, 0` con `color: rgb(var(--black))` es como lo escriben
+ * Tailwind, Bootstrap y media biblioteca de utilidades, porque guardando sólo
+ * los canales la opacidad se puede cambiar sin duplicar el color. Comparada
+ * como cadena contra el computado —`rgb(0, 0, 0)`— no se parece en nada, y el
+ * token se tiraba en silencio: es exactamente el caso de «en Chrome pone
+ * var(--black) y en el panel pone #000000».
+ *
+ * Tres números en rango de canal, o cuatro con la alfa. Pedir el rango es lo
+ * que impide que un `1.5` o un `16px` se cuelen como si fueran un color. */
+function channels (value) {
+  const parts = String(value || '').trim().split(/[\s,/]+/).filter(Boolean)
+  if (parts.length < 3 || parts.length > 4) return null
+  const n = parts.map(Number)
+  if (n.some((x) => !isFinite(x))) return null
+  if (n.slice(0, 3).some((x) => x < 0 || x > 255 || String(x).indexOf('.') > -1)) return null
+  return `rgb(${n[0]}, ${n[1]}, ${n[2]})`
+}
+
+/* El mismo color quitándole la alfa: la variable guarda los canales y la
+ * declaración le pone la transparencia encima —`rgba(var(--negro), .6)`—, así
+ * que el computado trae una cuarta cifra que el token no puede tener. */
+function opaque (value) {
+  const m = String(value || '').match(/^rgba\((\d+), (\d+), (\d+),/)
+  return m ? `rgb(${m[1]}, ${m[2]}, ${m[3]})` : null
+}
+
+function sameColour (token, painted) {
+  if (token === painted) return true
+  const ch = channels(token)
+  if (!ch) return false
+  return ch === painted || ch === opaque(painted)
+}
+
+/* Todas las variables que aparecen en el valor escrito.
+ *
+ * Son varias más veces de las que parece, porque casi nadie escribe la
+ * propiedad larga: `border: 2px solid var(--color-linea)` lleva la variable
+ * dentro de un atajo, y `font: bold var(--tamano)/1.4 var(--familia)` lleva
+ * dos, cada una para una propiedad distinta. Cuál manda para la propiedad que
+ * estamos mirando lo decide después la comprobación contra el computado. */
+function varsIn (value) {
+  const out = []
+  const re = /var\(\s*(--[\w-]+)/g
+  let m
+  while ((m = re.exec(String(value || '')))) out.push(m[1])
+  return out
+}
+
+/* La declaración que gana para una propiedad, de mayor a menor precedencia.
+ *
+ * Importa el orden y no vale con «la primera que lleve un var()»: si alguien ha
+ * escrito el hexadecimal a mano encima de una regla que sí usaba la variable,
+ * mirar sólo los `var()` contaría justo lo contrario de lo que pasa. Se busca
+ * quién gana y después se mira si ese lleva variable.
+ *
+ * El protocolo entrega las reglas de menor a mayor precedencia —la specificity
+ * ya resuelta por el propio navegador—, así que ganar es ir del final al
+ * principio, con lo marcado `!important` por delante de todo lo demás. */
+function winner (styles, names) {
+  const pick = (important) => {
+    for (const entry of styles) {
+      const found = (entry.style.cssProperties || []).filter((p) =>
+        p.text && !p.disabled && names.indexOf(p.name) > -1 && !!p.important === important)
+      if (found.length) {
+        return { value: found[found.length - 1].value, selector: entry.selector }
+      }
+    }
+    return null
+  }
+  return pick(true) || pick(false)
+}
+
+/* Las hojas de un elemento, de mayor a menor precedencia y en un solo array,
+ * cada una con el selector que la trajo.
+ *
+ * El selector hace falta para saber de qué regla sale la tipografía, que en
+ * muchos sistemas es el único sitio donde queda escrito el nombre del estilo
+ * de texto: `.is-style-text-label-sm` es una clase, no una variable.
+ *
+ * De una regla con varios selectores —`h1, h2, .titular`— se coge el que ha
+ * hecho match de verdad, que para eso lo dice el protocolo: quedarse con la
+ * lista entera sacaría nombres de clases que este elemento no lleva. */
+function stack (match) {
+  const own = (match.matchedCSSRules || []).map((m) => {
+    const list = m.rule.selectorList || {}
+    const one = (list.selectors || [])[(m.matchingSelectors || [])[0]]
+    return { style: m.rule.style, selector: (one && one.text) || list.text || '' }
+  }).reverse()
+  return (match.inlineStyle ? [{ style: match.inlineStyle, selector: '' }] : []).concat(own)
+}
+
+/* La raíz de un token, quitándole el nombre de la propiedad que lleva pegado.
+ *
+ * Los dos órdenes existen y hay que conocer los dos: unos sistemas lo ponen
+ * detrás —`--…--text-label-md--font-size`— y otros delante
+ * —`--font-size--text-body-xs`—. Buscando sólo el sufijo, los segundos no se
+ * detectaban como estilo y salían con la variable repetida en cada fila, que
+ * es justo lo que se venía a quitar. */
+function stemOf (name, prop) {
+  if (name.length > prop.length && name.slice(-prop.length) === prop) {
+    const stem = name.slice(0, name.length - prop.length).replace(/-+$/, '')
+    if (stem.length > 2) return stem
+  }
+  const head = '--' + prop
+  if (name.indexOf(head) === 0 && name.length > head.length) {
+    const stem = '--' + name.slice(head.length).replace(/^-+/, '')
+    if (stem.length > 2) return stem
+  }
+  return null
+}
+
+/* La hermana de una raíz para otra propiedad. Cuatro formas posibles: la
+ * propiedad delante o detrás, y con uno o dos guiones de separador. Probarlas
+ * todas no cuesta nada y ahorra tener que saber de qué sistema viene. */
+function sibling (vars, stem, prop) {
+  const bare = stem.replace(/^--/, '')
+  const names = [
+    stem + '--' + prop, stem + '-' + prop,
+    '--' + prop + '--' + bare, '--' + prop + '-' + bare
+  ]
+  for (const name of names) {
+    if (vars[name] != null) return name
+  }
+  return null
+}
+
+/* Si dos valores son el mismo, sabiendo cuál es la propiedad.
+ *
+ * Hace falta por el interlineado: escribirlo sin unidad —`line-height: 1.6`—
+ * es lo normal, y entonces el token guarda `1.6` mientras el computado trae
+ * `19.2px`. Comparados como cadenas no se parecen en nada, y así se quedaba
+ * sin detectar el interlineado de medio sistema de diseño; y con él, la mitad
+ * de las veces que un estilo de texto podía reconocerse entero. */
+/* Si el valor de un token se puede comparar con el computado tal cual.
+ *
+ * Muchos no. Un `clamp(1.25rem, …, 1.5rem)` de tipografía fluida se convierte
+ * en `21.9964px` y no se parece en nada a lo que guarda la variable; un `1rem`
+ * acaba en `16px`; un `calc()` o un `var()` anidado, lo mismo. Y esto importa
+ * porque la comprobación de seguridad exigía que cuadraran: cada token escrito
+ * así se descartaba en silencio, que es por qué un sitio entero de tipografía
+ * fluida no enseñaba ni un estilo. Cuando no se puede comparar hay que decidir
+ * con otra cosa, no dar por falso lo que sólo es incomprobable. */
+function literal (value) {
+  const text = String(value || '')
+  /* `light-dark()` y `color-mix()` se resuelven igual que un `calc()` y hay que
+   * tratarlos igual: la variable guarda la función entera y el computado trae
+   * ya el color elegido. Sin ellas en la lista, todo sistema con tema claro y
+   * oscuro en una sola variable perdía sus tokens de color. */
+  if (/(?:clamp|calc|min|max|var|env|attr|light-dark|color-mix)\(/.test(text)) return false
+  return !/\d\s*(?:vw|vh|vmin|vmax|rem|em|ch|ex|%)/.test(text)
+}
+
+/* Dónde vive la variable dentro de lo que se escribió.
+ *
+ * `color: var(--x)` es una cosa y `color: rgb(var(--x) / .6)` es otra: en la
+ * segunda la variable no es el valor, es un trozo suelto de él, y compararla
+ * con el computado no puede salir bien nunca. Saberlo es lo que permite
+ * atribuirla igualmente sin arriesgarse: dentro de una función de color, lo que
+ * hay es el color, no puede ser otra cosa. */
+const COLOUR_FN = /^(rgb|rgba|hsl|hsla|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)$/
+
+function wrappedInColour (declared, name) {
+  const text = String(declared || '')
+  const at = text.indexOf('var(' + name)
+  if (at < 0) return false
+  let depth = 0
+  for (let i = at - 1; i >= 0; i--) {
+    const c = text[i]
+    if (c === ')') depth++
+    else if (c === '(') {
+      if (depth) { depth--; continue }
+      const before = text.slice(0, i).match(/([a-z-]+)$/i)
+      return !!before && COLOUR_FN.test(before[1].toLowerCase())
+    }
+  }
+  return false
+}
+
+function sameValue (prop, token, painted, fontSize) {
+  if (token === painted) return true
+  if (COLOURS.has(prop)) return sameColour(token, painted)
+  if (prop !== 'line-height' || /[a-z%]/.test(token)) return false
+  const ratio = parseFloat(token)
+  const px = parseFloat(painted)
+  const base = parseFloat(fontSize)
+  if (!ratio || !px || !base) return false
+  return Math.abs(ratio * base - px) < 0.5
+}
+
+/* El estilo de texto aplicado, que es la pregunta de verdad.
+ *
+ * Enseñar `--…--text-label-md--font-size`, `--…--text-label-md--line-height` y
+ * `--…--text-label-md--font-weight` en tres filas seguidas es decir tres veces
+ * lo mismo: lo que cambia entre ellas —`font-size`, `line-height`— ya lo dice
+ * el nombre de la fila, y lo único que informa, `text-label-md`, queda
+ * enterrado y repetido. Si el estilo está puesto, sus piezas están bien por
+ * definición y no hay nada que mirar. Así que se dice una vez y arriba.
+ *
+ * Hacen falta dos propiedades para hablar de estilo: con una sola, la raíz es
+ * una coincidencia del nombre y no una prueba de que haya un estilo detrás.
+ *
+ * Y entonces sí se puede señalar lo que se sale, que sin esta raíz era
+ * imposible: si el elemento usa `text-label-md` y el peso va a mano, se puede
+ * comparar contra lo que ese estilo dice que debería pesar. */
+function typeStyle (out, vars, raw, value) {
+  const stems = {}
+  for (const prop of TYPE_PROPS) {
+    const t = out[prop]
+    if (!t || t.loose) continue
+    const stem = stemOf(t.name, prop)
+    if (stem) (stems[stem] = stems[stem] || []).push(prop)
+  }
+
+  /* Cuándo una raíz es un estilo y no una casualidad del nombre.
+   *
+   * Contar dos propiedades aplicadas era la primera regla y se quedaba corta:
+   * en un sitio con tipografía fluida puede haber una sola comprobable y el
+   * estilo estar puestísimo, y entonces no salía nunca —que es el fallo que se
+   * veía—. La prueba buena no es cuántas se usan, sino si **el sistema define
+   * la raíz como un grupo**: que existan hermanas suyas para otras propiedades
+   * es lo que distingue un estilo de texto de un peldaño de escala como
+   * `--font-weight-medium`, que no tiene hermanas de ningún tipo. */
+  /* Y con una sola propiedad aplicada, cuál es. Esta segunda mitad la puso el
+   * caso de la tipografía fluida —un `clamp()` deja una sola comprobable— y
+   * valía para cualquiera, que es demasiado: en Bootstrap la familia sale de
+   * `--bs-body-font-family` en toda la página, así que hasta un `h1` con su
+   * propio tamaño salía marcado como «estilo bs-body». Heredar la familia no
+   * es llevar puesto un estilo de texto; el tamaño sí, que es lo que distingue
+   * a un peldaño del catálogo de otro. */
+  let best = null
+  for (const stem of Object.keys(stems)) {
+    const used = stems[stem].length
+    const family = TYPE_PROPS.filter((p) =>
+      stems[stem].indexOf(p) < 0 && sibling(vars, stem, p)).length
+    if (used < 2 && !(family && stems[stem][0] === 'font-size')) continue
+    if (!best || used > stems[best].length) best = stem
+  }
+  if (!best) return null
+
+  /* Lo que se sale del estilo, que es lo único que queda por mirar. Sólo de
+   * las propiedades para las que el estilo tiene algo que decir: si no existe
+   * `--…--text-label-md--letter-spacing`, el estilo no opina del espaciado y
+   * no hay nada de lo que salirse. */
+  const off = {}
+  for (const prop of TYPE_PROPS) {
+    const t = out[prop]
+    if (t && !t.loose && stemOf(t.name, prop) === best) continue
+    const sib = sibling(vars, best, prop)
+    if (!sib || value[prop] == null) continue
+    /* Sólo cuando se puede comparar de verdad. Con un `clamp()` detrás no se
+     * sabe si esto se sale del estilo o lo cumple, y «fuera de text-label-xl ·
+     * dice clamp(1.25rem, …)» sería una acusación inventada y además ilegible. */
+    if (!literal(vars[sib])) continue
+    off[prop] = {
+      name: sib,
+      value: raw[sib],
+      same: sameValue(prop, vars[sib], value[prop], value['font-size'])
+    }
+  }
+
+  return {
+    stem: best,
+    props: stems[best],
+    off: Object.keys(off).length ? off : null
+  }
+}
+
+/* El estilo de texto cuando no hay una raíz común entre las variables.
+ *
+ * Es el caso de la mayoría de los sistemas de verdad, y el que faltaba: el
+ * estilo no es un grupo de variables con el mismo prefijo, es **una clase**
+ * —`.is-style-text-label-md`, `.text-heading-xl`— cuya regla trae dentro el
+ * tamaño, el peso y el interlineado, cada uno apuntando a una variable de la
+ * escala general. Enseñar esas variables es correcto y no contesta a la
+ * pregunta: `--text-5xl` es el peldaño de la escala, no el estilo que alguien
+ * eligió aplicar.
+ *
+ * Así que se mira de dónde *vienen*: si una misma regla manda en dos o más
+ * propiedades de tipografía, esa regla es el estilo de este elemento.
+ *
+ * Dos, y no una, por lo de siempre: una regla suelta que toque sólo el peso es
+ * un ajuste, no un estilo. Y el selector tiene que ser una clase a secas para
+ * que su nombre signifique algo — un `h2` o un `.card > p:first-child` mandan
+ * igual, pero llamar «estilo h2» a eso es ponerle nombre de estilo a lo que no
+ * lo tiene. */
+const STYLEISH = /^\.([A-Za-z_][\w-]*)$/
+
+/* Y el mismo estilo escrito como atributo, que es la otra forma que se lleva:
+ * `[data-typography="body-xl"]`, `[data-variant="heading-l"]`. El nombre está
+ * igual de escrito, sólo que a la derecha del igual. */
+const ATTRISH = /^\[[\w-]+\s*[~|^$*]?=\s*["']?([\w-]+)["']?\]$/
+
+/* El nombre, sin la fontanería que todos los sistemas repiten delante. De
+ * `.is-style-text-label-md` sale `text-label-md`. */
+const STYLE_NOISE = /^(is-style-|has-|wp-block-|style-|type-|typo-|txt-)+/
+
+/* Una clase que no se llama de ninguna manera: el hash de emotion, de
+ * styled-components o de un CSS Modules sin nombre legible. Enseñarla como
+ * origen de la tipografía es enseñar ruido — no se puede ir a buscar al CSS ni
+ * repetir en una conversación. */
+const HASHED = /^(css|sc|jsx|emotion)-[a-z0-9]{4,}$/i
+
+/* El nombre de una clase, llevado a la forma en que se nombran los estilos.
+ *
+ * Un `Text_bodyMd__a1b2c` de CSS Modules es `text-body-md` y no se reconocía ni
+ * de lejos: ni el hash de detrás ni el camelCase encajaban con unos nombres
+ * pensados para kebab-case. El estilo era el mismo, sólo estaba escrito con la
+ * convención de otra tecnología, que es justo lo que esto no debería notar. */
+function tidyName (raw) {
+  let name = String(raw)
+    /* El hash de CSS Modules, con los guiones bajos que le ponga delante cada
+     * empaquetador —uno, dos o tres—: `Text_bodyMd__a1b2c`, `display_7ugH`.
+     * Con dos o más no hay duda: nadie separa palabras así. Con uno solo hay
+     * que mirar qué trae detrás —letras y cifras mezcladas, que es lo que no
+     * hace ninguna palabra— para que un `.text_size_400` no pierda el `400`,
+     * que ahí sí significa algo. */
+    .replace(/__+[A-Za-z0-9]+$/, '')
+    .replace(/_[A-Za-z0-9]{4,}$/, (tail) =>
+      (/\d/.test(tail) && /[A-Za-z]/.test(tail) ? '' : tail))
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/_/g, '-')
+    .toLowerCase()
+  /* Y el nombre del archivo, que va delante y se repite en cada clase del
+   * sistema: de `primer-brand--text-module--text--400` el estilo es `text--400`
+   * y todo lo anterior es en qué fichero vive. */
+  const cut = name.lastIndexOf('-module-')
+  if (cut > 0) name = name.slice(cut + '-module-'.length)
+  /* Y el hash que se escapó de lo anterior por llevar un guion dentro. Lo
+   * delata la costura: **tres guiones seguidos** no los escribe nadie a mano
+   * —BEM llega a dos— y sólo salen de juntar el separador del empaquetador con
+   * el guion bajo que le precede. */
+  name = name.replace(/---+[a-z0-9-]{2,}$/, '')
+  return name.replace(STYLE_NOISE, '').replace(/^-+|-+$/g, '')
+}
+
+/* Contar propiedades no basta, y la primera versión de esto lo demostró sola:
+ * daba por estilo cualquier clase que tocara dos —un `.titulo` o un `.intro`
+ * de una hoja cualquiera—, que es el falso positivo de siempre con otro
+ * disfraz.
+ *
+ * Lo que de verdad distingue a un estilo de texto es **cómo se llama**: son un
+ * catálogo y se nombran como tal, con su categoría y su peldaño —`label/md`,
+ * `heading/xl`, `body-sm`—. Esa forma es la firma, y pedirla deja fuera lo que
+ * sólo es una clase que da la casualidad de que toca tipografía.
+ *
+ * Se escapará algún sistema que llame a los suyos `lead` o `destacado`. Se
+ * escapa hacia el lado correcto: callar cuando no se sabe es lo que ha hecho
+ * esto desde el principio, y enseñar un nombre inventado como si fuera el
+ * estilo aplicado es peor que no enseñar ninguno. */
+const TYPE_WORD =
+  /(^|-)(text|type|font|heading|title|subtitle|body|label|caption|display|overline|eyebrow|lead|quote|code|mono|paragraph|copy)(-|$)/
+const SIZE_WORD =
+  /(^|-)(\d?x{0,3}[sml]|xs|sm|md|lg|xl|[2-9]xl|tiny|small|medium|large|huge|regular|base|default|\d{2,4})$/
+
+/* Cuándo el nombre de una regla es el nombre de un estilo.
+ *
+ * Con la talla al final —`body-xl`, `text-heading-l`— no hay duda: así se
+ * nombra un catálogo y sólo un catálogo. Sin ella —`caption`, `lead`, `quote`—
+ * puede ser un estilo o puede ser una clase cualquiera que da la casualidad de
+ * tocar tipografía, y ahí decide cuántas propiedades manda: una regla que
+ * decide el tamaño **y** el interlineado **y** el peso de un texto no está
+ * ajustando nada, está siendo el estilo de ese texto.
+ *
+ * Pedir las dos cosas a la vez, que es lo que se pedía, dejaba fuera media
+ * industria: ningún sistema llama `caption-md` a su pie de foto. */
+/* Y sin talla, la palabra tiene que ir **delante**: un catálogo se nombra por
+ * la categoría primero —`caption`, `heading-display`, `body`—, mientras que
+ * llevarla al final es lo que hace un componente al decir de qué es su trozo
+ * —`usage-text`, `transaction-details-label`—. Sin esta distinción, Stripe
+ * sacaba media página marcada con estilos que no existen. */
+const TYPE_HEAD =
+  /^(text|type|font|heading|title|subtitle|body|label|caption|display|overline|eyebrow|lead|quote|code|mono|paragraph|copy)(-|$)/
+
+function styleNamed (name, count) {
+  if (!name || !TYPE_WORD.test(name)) return false
+  return SIZE_WORD.test(name) || (count >= 3 && TYPE_HEAD.test(name))
+}
+
+/* La regla que decide la tipografía de este elemento, se llame como se llame.
+ *
+ * Dos desenlaces y hay que distinguirlos, porque no dicen lo mismo: si el
+ * nombre es el de un estilo del sistema —`body-md`— eso es el token que se
+ * quería ver, y se dice como tal. Si no lo es —un `.card-title`, un `h2`, un
+ * `.promo > p`— sigue siendo la respuesta a «¿de dónde sale esta tipografía?»,
+ * que es la pregunta que trae a nadie aquí, pero llamarlo estilo sería
+ * inventarse un token que no existe. Se dice de dónde sale y ya. */
+function classStyle (rules) {
+  let best = null
+  for (const selector of Object.keys(rules)) {
+    const props = rules[selector]
+    if (props.length < 2) continue
+    /* Una clase o un atributo, y nada más. Un `h2` o un `button` mandan igual
+     * en la tipografía, pero son la hoja de estilos base —la del navegador, la
+     * del reset— y no una decisión que nadie tomó para *este* elemento:
+     * anunciarlos como su origen es una fila de ruido en cada botón de cada
+     * web. Lo que alguien escribió a propósito lleva nombre. */
+    const m = selector.match(STYLEISH) || selector.match(ATTRISH)
+    if (!m || HASHED.test(m[1])) continue
+    const name = tidyName(m[1])
+    const named = styleNamed(name, props.length)
+    const rank = (named ? 100 : 0) + props.length
+    if (best && rank <= best.rank) continue
+    best = {
+      rank,
+      /* El selector tal cual: es lo que hay que buscar en el CSS, y el nombre
+       * limpio no se encuentra ahí —`.Text_bodyMd__a1b2c` no es `text-body-md`—. */
+      stem: selector,
+      name: named ? name : selector,
+      props,
+      off: null,
+      from: named ? 'class' : 'rule'
+    }
+  }
+  return best ? { stem: best.stem, name: best.name, props: best.props, off: null, from: best.from } : null
+}
+
+function readTokens (match, computed) {
+  const value = {}
+  const vars = {}
+  /* El valor sin tocar, para enseñarlo: `normalise` pasa todo a minúsculas
+   * para poder comparar, y una familia tipográfica enseñada como «inter» en
+   * vez de «Inter» canta. Se compara con uno y se lee el otro. */
+  const raw = {}
+  for (const p of computed) {
+    if (p.name.indexOf('--') !== 0) { value[p.name] = normalise(p.value); continue }
+    vars[p.name] = normalise(p.value)
+    raw[p.name] = String(p.value || '').trim()
+  }
+  /* Sin variables no hay tokens que enseñar, pero sí puede haber un estilo:
+   * vive en una clase y se reconoce por el nombre de su regla. Una hoja
+   * escrita a pelo, sin un solo `var()`, tiene derecho a esa línea. */
+  const anyVars = Object.keys(vars).length > 0
+
+  const own = stack(match)
+  /* `inherited[0]` es el padre, y de ahí hacia arriba. */
+  const up = (match.inherited || []).map(stack)
+  const out = {}
+  /* Qué regla manda en cada propiedad de tipografía, para reconocer el estilo
+   * cuando vive en una clase y no en una variable. */
+  const rules = {}
+
+  for (const prop of Object.keys(TOKEN_PROPS)) {
+    const painted = value[prop]
+    if (painted == null) continue
+    const names = TOKEN_PROPS[prop]
+
+    let found = winner(own, names)
+    if (!found && INHERITED.has(prop)) {
+      for (const level of up) {
+        found = winner(level, names)
+        if (found) break
+      }
+    }
+
+    if (!found) continue
+    const declared = found.value
+    /* De qué regla sale cada propiedad de tipografía: si una misma manda en
+     * varias, esa regla es el estilo de texto de este elemento. */
+    if (TYPE_PROPS.indexOf(prop) > -1 && found.selector) {
+      (rules[found.selector] = rules[found.selector] || []).push(prop)
+    }
+
+    const used = varsIn(declared)
+    if (used.length) {
+      /* La red de seguridad, y la que además elige entre las varias de un
+       * atajo: vale la que resuelve a lo que se está viendo. Si ninguna
+       * resuelve a eso, la regla que hemos elegido no es la que manda, y una
+       * atribución equivocada manda a alguien a cambiar la línea que no era.
+       * Con dos que cuadren tampoco se puede decir cuál: callar las dos veces,
+       * que es el mismo criterio que el de las cotas. */
+      const fits = used.filter((n) =>
+        vars[n] != null && sameValue(prop, vars[n], painted, value['font-size']))
+      if (fits.length === 1) {
+        out[prop] = { name: fits[0], value: raw[fits[0]] }
+        continue
+      }
+      /* Una sola variable en la declaración y un valor que no se puede
+       * comprobar —un `clamp()`, un `rem`— es incomprobable, no falso: si lo
+       * que se escribió es `var(--x)` a secas, no hay ninguna otra cosa de la
+       * que pueda venir el valor. Callar aquí era tirar todos los tokens de un
+       * sistema con tipografía fluida.
+       *
+       * Con dos variables de por medio sigue haciendo falta que una cuadre,
+       * porque ahí la comprobación no es la red de seguridad: es lo único que
+       * distingue cuál de las dos habla de esta propiedad. */
+      if (!fits.length && used.length === 1 && vars[used[0]] != null &&
+          (!literal(vars[used[0]]) || wrappedInColour(declared, used[0]))) {
+        out[prop] = { name: used[0], value: raw[used[0]] }
+      }
+      continue
+    }
+
+    /* El valor a mano que coincide con un token: el color es el correcto hoy y
+     * el día que el token cambie éste no cambiará. Es el fallo que se busca al
+     * revisar un sistema de diseño y el único que no se ve mirando la
+     * pantalla, porque hoy se ve exactamente igual de bien.
+     *
+     * Sólo con colores, y la razón es cuánto pesa la coincidencia: un
+     * `#001745` es una huella dactilar y encontrarlo en la lista de tokens
+     * demuestra algo, mientras que un `500`, un `16px` o un `0` coinciden con
+     * *algún* token en cuanto el sistema tiene doscientos. Avisar de esos era
+     * señalar una casualidad y hacer creer que alguien había roto un estilo
+     * que en realidad no estaba puesto. El caso con contexto —un peso a mano
+     * dentro de un elemento que sí usa un estilo— lo cuenta `typeStyle`, que
+     * sabe contra qué compararlo. */
+    if (!COLOURS.has(prop)) continue
+    /* Con varios tokens del mismo color hay que elegir uno, y aquí es donde
+     * importa elegir bien: el que manda es el semántico de este papel, no el
+     * primitivo. Los demás no se tiran, se cuelgan del tooltip: son los otros
+     * sitios del sistema donde vive este mismo color, y a veces esa lista es
+     * justo lo que hacía falta ver. */
+    const all = Object.keys(vars)
+      .filter((n) => sameColour(vars[n], painted))
+      .sort((a, b) => tokenRank(b, prop) - tokenRank(a, prop) || (a < b ? -1 : 1))
+    if (all.length) {
+      out[prop] = {
+        name: all[0],
+        value: raw[all[0]],
+        loose: true,
+        alt: all.slice(1, 6)
+      }
+    }
+  }
+  const style = (anyVars ? typeStyle(out, vars, raw, value) : null) || classStyle(rules)
+  if (!Object.keys(out).length && !style) return null
+  return { props: out, style }
+}
+
+ipcMain.handle('inspect-details', async (_e, { id, selector }) => {
   const wc = webContents.fromId(id)
   if (!wc || wc.isDestroyed() || !selector) return null
   let enabled = false
@@ -910,7 +1611,23 @@ ipcMain.handle('platform-font', async (_e, { id, selector }) => {
     const best = (fonts || [])
       .filter((f) => f.familyName && !/emoji/i.test(f.familyName))
       .sort((a, b) => (b.glyphCount || 0) - (a.glyphCount || 0))[0]
-    return best ? prettyFont(best.familyName) : null
+
+    /* Las variables no son motivo para perder la fuente: van en su propio
+     * try, y una página sin tokens sencillamente no trae esta parte. */
+    let read = null
+    try {
+      const [match, computed] = await Promise.all([
+        wc.debugger.sendCommand('CSS.getMatchedStylesForNode', { nodeId: found.nodeId }),
+        wc.debugger.sendCommand('CSS.getComputedStyleForNode', { nodeId: found.nodeId })
+      ])
+      read = readTokens(match, computed.computedStyle || [])
+    } catch (_) {}
+
+    return {
+      font: best ? prettyFont(best.familyName) : null,
+      tokens: read ? read.props : null,
+      style: read ? read.style : null
+    }
   } catch (_) {
     return null
   } finally {
@@ -934,5 +1651,6 @@ ipcMain.handle('guest-preload-path', () => {
   return pathToFileURL(path.join(__dirname, 'guest', 'guest.cjs')).href
 })
 
-/* Exported so the capture path can be exercised without the UI. */
-module.exports = { capturePanel }
+/* Exported so the capture path, the column and the token reading can be
+ * exercised without the UI. */
+module.exports = { capturePanel, columnHtml, readTokens }

@@ -44,6 +44,13 @@ con cualquier URL: no dependemos de iframes ni de que la web permita ser embebid
   resalte y las cotas. Es el único archivo que corre en tres sitios a la vez (el frame
   vivo, la captura y el renderer), y el porqué está explicado en su cabecera.
 - `src/renderer/` — el lienzo: paneles, pan/zoom, barra de herramientas, menús.
+- `src/welcome/index.html` — la página de bienvenida: los cuatro pasos básicos, en HTML
+  suelto y sin estilos compartidos, porque se carga dentro de los paneles y no en la app.
+  Los trozos de interfaz que acompañan a cada paso (la barra de URL, el menú de
+  dispositivos, el de sets, el inspector) están **redibujados en CSS, no son capturas**:
+  la página se ve a 390px y con el lienzo escalado, donde un recorte real llega borroso,
+  y así no se cargan imágenes de cientos de KB en cada panel. A cambio hay que repasarlos
+  si la interfaz de verdad cambia.
 
 ## Atajos y gestos
 
@@ -99,7 +106,31 @@ se copia.
 
 Lo que sale, y por qué eso y no la lista entera de propiedades computadas:
 
-- **Caja** — tamaño, padding, margin, gap y radio, y en un contenedor de flex o grid
+- **Caja** — tamaño, y el **padding y el margen dibujados**, no escritos: `padding: 12px
+  12px 12px 28px` es correcto y hay que contar con los dedos para saber cuál de los cuatro
+  es el de la izquierda, mientras que en el diagrama cada número está en el lado del que
+  habla. Es el mismo dibujo de anillos anidados de unas DevTools, con el contenido en el
+  centro, y sale **sólo cuando hay padding o margen**, que es lo que viene a desambiguar;
+  los anillos que están a cero no se dibujan, porque tres marcos de ceros alrededor del
+  único número que dice algo son justo el ruido que se venía a quitar. El borde no tiene
+  anillo por la misma razón: casi siempre mide un píxel, así que el marco no se ve y las
+  cuatro cifras que trae estorban entre las dos que importan. Su grosor lado a lado ya lo
+  cuenta la fila «Borde» de la sección de color.
+
+  **Pasar el ratón por el diagrama pinta esa banda sobre la propia página**, naranja el
+  margen y verde el padding, como en cualquier inspector. Sobre un número se pinta sólo ese
+  lado; sobre el anillo, los cuatro. Es lo que convierte «¿este hueco de 12px es de verdad
+  el margen de esto, o es el gap del contenedor?» en algo que se mira en vez de discutirse:
+  o la banda cae sobre el hueco, o no cae. El resalte del elemento sigue sin teñirse, que es
+  otra cosa —aquello falsearía el color que la captura va a demostrar—: estas bandas viven
+  sólo mientras el ratón está en el panel y no llegan nunca a una imagen.
+
+  (Y por si la duda se repite: un `gap` del contenedor **no puede** salir aquí como margen.
+  El valor viene del computado del propio elemento, donde un gap del padre no aparece; si
+  el diagrama dice `margin-bottom: 12`, ese elemento tiene doce píxeles de margen.)
+
+  También gap y radio,
+  y en un contenedor de flex o grid
   también **cómo reparte el sitio**: dirección, `justify`/`align`, y los anchos reales de
   las columnas de un grid (el computado son píxeles, no el `1fr` que se escribió, que es
   justo lo que hace falta para comprobar si una columna mide lo que debía). Si el elemento
@@ -244,8 +275,328 @@ seleccionar —cuando pasaba a significar algo— es cuando se iba de la pantall
 - El resalte **no tiñe** el elemento seleccionado, sólo lo bordea: un velo de color encima
   falsearía justo el color que la captura va a demostrar.
 
-Lo único que se inyecta en la página es una capa de `<div>`s que se borra al salir; las
-propiedades son valores computados, así que no hay que interpretar el CSS de nadie.
+Lo único que se inyecta en la página es una capa de `<div>`s que se borra al salir; los
+valores son los computados, así que no hay que interpretar el CSS de nadie. El nombre de
+la variable de la que sale cada uno es la única excepción, y va por otro camino: lo cuenta
+la sección siguiente.
+
+### De qué variable sale cada valor
+
+Un panel que sólo enseña `#1a1a1a` y `16px` te obliga a abrir el inspector del navegador
+igualmente, porque la pregunta de una revisión no es qué color es: es **si está puesto el
+token que tocaba**. Así que junto a cada valor, en la línea de debajo, va el nombre de la
+variable de la que sale.
+
+```
+Texto          #1a1a1a
+               --color-text
+Tamaño         18px
+               --text-lg
+```
+
+Va con **forma de etiqueta**, la misma que «heredado» o «AAA», porque es lo mismo que
+ésas: un apunte sobre el valor que tiene al lado, no otro valor. Se coloca a su lado si
+cabe y salta a su propia línea si no —un `--radius-md` no merece una línea para él solo y
+un `--wp--preset--color--ds-content-high` no cabe de ninguna manera—. Al pulsarla se copia
+`var(--color-text)`, ya escrito para pegar.
+
+Del nombre se enseñan **los dos últimos tramos**: de
+`--wp--preset--color--ds-content-high` sale `--color--ds-content-high`, porque
+`--wp--preset` se repite igual en todos los tokens del sistema y dentro del panel no
+distingue nada. Dos tramos y no uno, que fue lo primero que se probó: `ds-content-high` se
+explica solo, pero de `--wp--custom--spacing--md` quedaba `--md`, que es quedarse sin saber
+md de qué. El nombre entero está en el tooltip, y es lo que se copia.
+
+### El estilo, y no sus piezas
+
+Un estilo de texto en Figma —`body/xs`— es **una sola cosa** que lleva dentro el tamaño, el
+peso y la familia, y saber cuál está aplicado es media revisión: si pone `label/m`, sus
+piezas están bien por definición y no hay nada que comprobar debajo.
+
+En CSS no existe ese concepto, así que hay que reconocerlo, y se busca de las dos maneras
+en que los sistemas lo escriben: **un grupo de variables que comparten raíz**, o **una
+clase** cuya regla manda en varias propiedades a la vez. La segunda es la más común y va
+primero aquí abajo. Cuando no hay ninguna de las dos pero sí una regla que manda —una clase
+sin nombre de catálogo—, se dice de dónde sale la tipografía sin llamarlo estilo; y en un
+sitio de utilidades puras, donde cada clase decide una sola propiedad, no hay estilo que
+reconocer y la respuesta son las variables de cada fila, que es lo que de verdad hay.
+
+Empezando por la de las variables, que es la más literal: un puñado que comparte raíz.
+
+```
+--wp--custom--typography--text-label-md--font-size
+--wp--custom--typography--text-label-md--line-height
+--wp--custom--typography--text-label-md--font-weight
+```
+
+Enseñar esas tres debajo de sus tres filas era decir tres veces lo mismo: lo que cambia
+entre ellas —`font-size`, `line-height`— ya lo dice el nombre de la fila que tienen al
+lado, y lo único que informa, `text-label-md`, quedaba enterrado y repetido en seis líneas.
+Así que **la raíz se dice una vez y arriba**, y sus piezas se quedan donde estaban pero
+apagadas:
+
+```
+TIPOGRAFÍA
+Estilo         text-label-md
+Familia        Outfit
+Tamaño         16px             --text-label-md--font-size
+Interlineado   24px (1.5)       --text-label-md--line-height
+Peso           600              --text-label-md--font-weight
+```
+
+Durante un tiempo las piezas se callaban del todo, con el argumento de que si el estilo
+está puesto están bien por definición. Callarlas salía caro justo en los sistemas que mejor
+funcionan: con el estilo reconocido no se veía **ni una sola variable**, y «¿de dónde sale
+este interlineado?» sigue siendo una pregunta con respuesta propia —y es la que se copia
+para pegarla en otro sitio—. Así que la radiografía sale entera y la jerarquía la pone el
+color: la línea del estilo es la única con pastilla azul, las piezas van en gris apagado
+—confirman, no piden nada— y sólo se encienden en ámbar cuando algo se sale.
+
+#### Cuando el estilo es una clase
+
+Lo anterior vale cuando el sistema define el estilo como un grupo de variables. **La
+mayoría no lo hace**: el estilo es una **clase** —`.is-style-text-label-md`,
+`.text-heading-xl`— cuya regla trae dentro el tamaño, el peso y el interlineado, cada uno
+apuntando a una variable de la escala general.
+
+Ahí las variables de cada fila son correctas y no contestan a la pregunta: `--text-5xl` es
+el peldaño de la escala, no el estilo que alguien eligió aplicar. Así que se mira **de qué
+regla viene** cada propiedad de tipografía, y si una misma manda en dos o más, esa regla es
+el estilo:
+
+```
+TIPOGRAFÍA
+Estilo         text-label-md
+Familia        Figtree          --font-body
+Tamaño         16px             --text-base
+Interlineado   26px (1.63)      --leading-relaxed
+Peso           500              --font-weight-medium
+```
+
+Aquí las variables dicen el peldaño de la escala, que es otra cosa que el nombre del estilo
+y no una repetición suya, así que van a brillo normal y no apagadas.
+
+El nombre de la clase tiene que **parecer el de un estilo** para creérselo: categoría y
+peldaño, como se nombra un catálogo de tipografías (`label-md`, `heading-xl`, `body-sm`).
+Contar propiedades no bastaba, y la primera versión lo demostró sola: daba por estilo
+cualquier clase que tocara dos, así que un `.titulo` o un `.intro` de una hoja cualquiera
+salían como si fueran el sistema.
+
+Pero pedir **las dos cosas a la vez** —categoría y peldaño— dejaba fuera media industria:
+ningún sistema llama `caption-md` a su pie de foto ni `quote-l` a su cita. Así que el
+peldaño deja de ser obligatorio cuando la regla manda en **tres o más** propiedades de
+tipografía y **la categoría va delante**: una clase que decide el tamaño *y* el interlineado
+*y* el peso de un texto no está ajustando nada, está siendo su estilo, se llame `caption` o
+se llame `heading-display`.
+
+Lo de delante no es un capricho, lo enseñó Stripe: un catálogo se nombra por la categoría
+primero, y llevar la palabra al final es justo lo que hace un componente al decir de qué es
+su trozo —`usage-text`, `transaction-details-label`—. Sin esa distinción salía media página
+marcada con estilos que no existen, que es el falso positivo de siempre con otro disfraz.
+
+Y el nombre se lee antes de juzgarlo, porque **la misma cosa se escribe distinto en cada
+tecnología** y esto no debería notarlo: de un `Text_bodyMd__a1b2c` de CSS Modules sale
+`text-body-md` —fuera el hash, el camelCase pasado a guiones—, y `[data-typography="body-xl"]`
+cuenta igual que una clase, que el nombre está escrito exactamente igual sólo que a la
+derecha del igual. Lo que no cuenta es una clase que no se llama de ninguna manera: un
+`css-1a2b3c` de emotion o de styled-components no se puede ir a buscar al CSS ni repetir en
+una conversación.
+
+#### Cuando la regla no se llama como un token
+
+Queda el caso de en medio, que es común: una regla manda de verdad en la tipografía del
+elemento pero **no tiene nombre de estilo** —un `.card-title`, un `.lead`, un `.btn`—.
+Callar ahí desperdiciaba la respuesta a la pregunta que trae a nadie aquí, y llamarlo
+«Estilo» sería inventarse un token que no existe. Se dice, con otro rótulo y sin la
+pastilla azul:
+
+```
+TIPOGRAFÍA
+Definido en    .lead
+Tamaño         20px
+Peso           500
+```
+
+Es la misma respuesta con distinta certeza, y la diferencia se ve de un vistazo.
+
+Sólo de **clases y atributos**, nunca de un `h2` o un `button` sueltos: mandan igual en la
+tipografía, pero son la hoja base —la del navegador, la del reset— y no una decisión que
+alguien tomó para este elemento. Anunciarlas sería una fila de ruido en cada botón de cada
+web.
+
+#### Cuando el estilo es un grupo de variables
+
+Para llamarlo estilo hace falta o bien **dos propiedades usando la misma raíz**, o bien
+**que la única sea el tamaño** y el sistema defina hermanas suyas para otras propiedades.
+Lo primero solo se quedaba corto: en un sitio con tipografía fluida puede haber una sola
+pieza comprobable y el estilo estar puestísimo, y entonces no salía nunca. La prueba buena
+no es cuántas se usan, sino si el sistema define esa raíz **como un grupo** — que es
+también lo que distingue un estilo de texto de un peldaño de escala como
+`--font-weight-medium`, que no tiene hermanas de ningún tipo y no debe salir como si fuera
+un estilo.
+
+Que la única sea el tamaño, y no cualquiera, lo enseñó Bootstrap: define
+`--bs-body-font-family` y la hereda la página entera, así que un `h1` con su propio tamaño
+salía marcado como «estilo bs-body» sólo por compartir la fuente con el cuerpo de texto.
+Heredar la familia no es llevar puesto un estilo; el tamaño sí, que es lo que distingue a
+un peldaño del catálogo de los demás.
+
+La raíz se busca en **los dos órdenes**, porque los dos existen: unos sistemas ponen la
+propiedad detrás (`--…--text-label-md--font-size`) y otros delante
+(`--font-size--text-body-xs`). Mirando sólo el sufijo, los segundos no se reconocían como
+estilo y salían con la variable repetida en cada fila, que es exactamente lo que esto viene
+a quitar.
+
+Y el interlineado se compara sabiendo que **un ratio y unos píxeles pueden ser el mismo
+valor**: escribir `line-height: 1.6` es lo normal, y entonces el token guarda `1.6`
+mientras el computado trae `19.2px`. Como cadenas no se parecen en nada, y sin esta cuenta
+se quedaba sin reconocer el interlineado de medio sistema —y con él, la mitad de las veces
+que un estilo podía identificarse entero.
+
+Y con la raíz localizada se puede señalar **lo que se sale**, que sin ella era imposible:
+
+```
+Estilo         text-title-sm
+Peso           500
+               fuera de text-title-sm · dice 700
+```
+
+Alguien pisó el peso del estilo. Las dos maneras de salirse no dicen lo mismo y se
+distinguen: `fuera de … · dice 700` es que el estilo pide otra cosa, y `a mano · lo trae
+text-title-sm` es que el valor es el correcto pero escrito suelto, que hoy no se nota y el
+día que el estilo cambie sí.
+
+### El valor a mano que coincide con un token
+
+Cuando el valor está escrito directamente y existe un token con ese mismo valor, lo dice en
+ámbar.
+
+```
+Texto          #001745
+               a mano · hay --color--ds-content-high
+```
+
+Alguien escribió el hexadecimal en vez de la variable. Hoy se ve exactamente igual de
+bien —por eso es el único fallo de sistema de diseño que **no se ve mirando la pantalla**—
+y el día que el token cambie, éste se quedará atrás. Va en ámbar y no en rojo porque no
+está roto: está desconectado.
+
+#### Cuál de los tokens, cuando hay varios con ese color
+
+Aquí hay que elegir, porque en cuanto un sistema tiene temas el mismo negro vive en cinco
+sitios. Y elegir mal vacía el aviso: un sistema de diseño tiene **dos pisos** y sólo uno
+contesta a la pregunta. Abajo los primitivos —`--black`, `--grey-900`, `--blue-500`—, que
+son la caja de lápices y no una decisión de nadie. Arriba los semánticos
+—`--ds-content-high`, `--surface-default`—, que son el token que alguien eligió *para
+esto*. Saber que el negro de un texto es `--ds-content-high` sirve para revisarlo; saber
+que es `--black` es saber que es negro, que ya se veía en la pantalla.
+
+Así que gana el semántico, y entre los semánticos el que habla **del mismo papel que la
+propiedad**: el color de un texto se llama `content` o `text`, el de un fondo `surface` o
+`bg`, el de un borde `border` o `stroke`. Es lo que distingue al token que iba aquí de los
+otros cuatro que son del mismo negro.
+
+```
+Fondo          #ffffff
+               a mano · hay --ds-surface-default
+```
+
+Los demás candidatos no se tiran: van al tooltip, que es donde no cuestan nada y contestan
+a «¿y no sería aquel otro?». Uno es la respuesta y el resto es el mapa.
+
+Todo esto **sólo decide cuando hay que adivinar**. Si el CSS nombra una variable, ésa es la
+respuesta y no hay nada que elegir: si pone `var(--black)`, se enseña `--black` aunque
+exista un semántico con ese mismo color, porque lo que se está usando es el primitivo.
+
+**Sólo con colores**, y la primera versión no lo limitaba: avisaba de cualquier valor que
+coincidiera con cualquier token, y eso es un generador de falsos positivos. Un `#001745` es
+una huella dactilar y encontrarlo en la lista demuestra algo; un `500`, un `16px` o un `0`
+coinciden con *algún* token en cuanto el sistema tiene doscientos. Marcar un peso de 500
+porque existe un `--…--text-title-sm--font-weight: 500` hacía creer que alguien había roto
+ese estilo, cuando lo que pasaba era que no lo estaba usando **en absoluto** —ni el tamaño,
+ni el interlineado, ni el peso—. El caso que sí tiene contexto, un peso suelto dentro de un
+elemento que sí lleva estilo puesto, lo cuenta la sección de arriba, que sabe contra qué
+compararlo.
+
+### Por qué esto hace falta un rodeo
+
+Cuando el navegador pinta la página, `var(--color-text)` ya es un `rgb(26, 26, 26)` y la
+variable de la que venía **se ha perdido**: no hay ninguna API del DOM que la recuerde, y
+por eso el panel no podía contarlo por su cuenta. Lo sabe el protocolo de DevTools, que es
+de donde sale el panel «Styles» del navegador: devuelve las reglas **tal y como se
+escribieron**, con el `var()` sin resolver, la cadena de herencia entera y también las
+hojas servidas desde otro dominio. Ya había una sesión abierta contra cada panel para
+preguntar la tipografía real, así que esto es una llamada más en un viaje que ya se hacía:
+ni un proceso nuevo, ni una dependencia, unos milisegundos en el clic.
+
+Como el resto del inspector, **si no cuadra se calla**:
+
+- Se busca **qué declaración gana**, y después si ésa lleva variable. Al revés —buscar el
+  primer `var()` que aparezca— un hexadecimal escrito a mano encima de una regla que sí
+  usaba la variable contaría justo lo contrario de lo que pasa.
+- La variable candidata tiene que **resolver a lo que se está viendo**. Si no, es que la
+  regla elegida no era la que mandaba, y se calla. Esto es lo que deja acertar también
+  dentro de un atajo: en `border: 2px solid var(--color-linea)` la variable va a mitad de
+  la declaración, y la que vale es la que da el color computado.
+- Con dos variables que cuadren igual de bien, tampoco se dice ninguna.
+- Y no se avisa de un valor suelto que coincida con un token si el valor no es un color,
+  porque entonces la coincidencia no demuestra nada. Ver arriba.
+
+Con una excepción, que costó un sitio entero sin reconocer: **incomprobable no es falso**.
+Un `clamp(1.25rem, …, 1.5rem)` de tipografía fluida se convierte en `21.9964px`, y un
+`1rem` en `16px`; comparar la variable con lo pintado no da igual ni de lejos, y así se
+descartaba en silencio cada token escrito así. Cuando lo que se escribió es `var(--x)` a
+secas y nada más, no hay ninguna otra cosa de la que pueda venir el valor, así que se dice
+aunque no se pueda comprobar. La comprobación se sigue exigiendo cuando hay **varias**
+variables en juego, porque ahí no es una red de seguridad: es lo único que distingue cuál
+de ellas habla de esta propiedad.
+
+### Los colores que no se escriben como colores
+
+La regla de «la variable tiene que resolver a lo que se está viendo» tiene un punto ciego
+que costaba tokens de color a mansalva, y se ve en cuanto se compara con Chrome: en el
+inspector del navegador pone `var(--black)` y aquí ponía `#000000` a secas. Lo que pasa es
+que **media industria no guarda colores en sus variables, guarda canales**:
+
+```css
+--black: 0, 0, 0;
+color: rgb(var(--black));
+```
+
+Así lo escriben Tailwind, Bootstrap y cualquiera que quiera cambiar la opacidad sin
+duplicar el color. Comparada como cadena, `0, 0, 0` no se parece en nada al `rgb(0, 0, 0)`
+del computado, y el token se tiraba en silencio. Ahora tres números en rango de canal
+—cuatro con la alfa— se leen como el color que son antes de comparar, y la alfa que la
+declaración pone por encima (`rgba(var(--negro), .6)`) no estorba.
+
+Y hay un segundo grupo con el mismo final: los colores que llegan **dentro de una función**.
+
+```css
+color: color-mix(in srgb, var(--black) 92%, white);
+color: var(--fg);          /* --fg: light-dark(var(--black), #fff) */
+```
+
+Aquí la variable ni siquiera es el valor: es un trozo de él, o trae dentro una función que
+el navegador resuelve antes de pintar. Compararla con el computado no puede salir bien
+nunca, y exigir que cuadrara era descartar todo sistema con tema claro y oscuro en una sola
+variable. Es el mismo caso que el `clamp()` de más arriba —**incomprobable no es falso**— y
+se resuelve igual: cuando la única variable de la declaración vive dentro de una función de
+color, lo que hay dentro de una función de color es el color, y no puede venir de otro
+sitio. Sigue siendo una sola variable: con dos en juego se calla, porque ahí la
+comprobación es lo único que distingue cuál habla de esta propiedad.
+
+Por lo mismo, un valor a mano no se marca como «fuera del estilo» si lo que el estilo trae
+es un `clamp()`: no se puede saber si se sale o lo cumple, y «fuera de text-label-xl · dice
+clamp(1.25rem, …)» sería una acusación inventada además de ilegible.
+
+Lo que no puede decirte es si la variable aplicada es la **correcta**: el panel te dirá que
+ahí hay un `--color-text-secondary`, y si eso tenía que haber sido el primario lo decides
+tú mirándolo. Lo que se ahorra es el viaje de salir de la app para averiguar cuál está
+puesta.
+
+Todo esto **sale también en la captura**, en la columna de datos, que es donde más sirve:
+quien abre la imagen en Slack no tiene la página delante para ir a comprobar de dónde
+salía ese color.
 
 ## Screenshot
 
@@ -565,3 +916,9 @@ cuando dé pereza avisar al equipo de que hay versión nueva, no antes.
   quedas logueado en todos.
 - Los certificados autofirmados se aceptan sólo en hosts locales.
 - El estado (URL, paneles, posición del lienzo, sets) se guarda en `localStorage`.
+- **La primera vez no hay URL por defecto.** La barra sale vacía y los paneles cargan
+  `src/welcome/index.html`, que explica los cuatro pasos: pegar la URL, elegir
+  dispositivos, guardar el set y el modo inspección. Antes arrancaban en
+  `localhost:3000`, que casi siempre era una pantalla en blanco. Esa página cuenta como
+  «sin URL»: no se guarda en el estado ni en los sets, así que a partir de la segunda vez
+  se abre en lo último que cargaste, como siempre.

@@ -28,8 +28,23 @@ let guestPreload = null
 let inspectSource = null
 let uid = 0
 
+/* La primera vez no hay URL que restaurar, y un about:blank en cada panel no
+ * explica nada: los paneles arrancan en esta página local con los cuatro pasos
+ * básicos. Cuenta como «sin URL», así que la barra sale vacía y no se guarda. */
+const WELCOME_URL = new URL('../welcome/index.html', location.href).href
+
+function isWelcome (url) {
+  return !url || url === WELCOME_URL || url === 'about:blank'
+}
+
+/* Pinta la barra de URL: el punto queda apagado mientras no haya URL propia. */
+function showUrl (url) {
+  urlInput.value = isWelcome(url) ? '' : url
+  urlStatus.className = 'scheme' + (isWelcome(url) ? '' : (isLocal(url) ? ' local' : ' remote'))
+}
+
 const state = {
-  url: 'http://localhost:3000',
+  url: '',
   canvas: { x: 60, y: 40, scale: 0.55 },
   sync: { scroll: true, click: true, nav: true },
   scrollMode: 'ratio',
@@ -367,9 +382,8 @@ function replaceSet (set) {
 
 function applyUrl (url) {
   const target = normalizeUrl(url)
-  state.url = target
-  urlInput.value = target
-  urlStatus.className = 'scheme ' + (isLocal(target) ? 'local' : 'remote')
+  state.url = isWelcome(target) ? '' : target
+  showUrl(state.url)
 }
 
 function currentSet () {
@@ -466,7 +480,7 @@ function onGuestMessage (p, channel, data) {
        * de lo que sale en la imagen. */
       closeInsNote()
       paintInspector()
-      askPlatformFont(p)
+      askDetails(p)
       /* El globo al lado del cursor: una vez en la vida, en la primera
        * selección, y nunca más. Lo decide el host porque es quien recuerda
        * —el frame se recarga y olvida—; el frame sólo lo pinta, que es donde
@@ -515,7 +529,7 @@ function onGuestMessage (p, channel, data) {
       break
 
     case 'page-ready':
-      urlStatus.className = 'scheme ' + (isLocal(data.href) ? 'local' : 'remote')
+      urlStatus.className = 'scheme' + (isWelcome(data.href) ? '' : (isLocal(data.href) ? ' local' : ' remote'))
       break
   }
 }
@@ -530,9 +544,8 @@ function broadcast (from, channel, payload) {
 let navLock = false
 
 function propagateNav (from, url) {
-  urlInput.value = url
-  state.url = url
-  urlStatus.className = 'scheme ' + (isLocal(url) ? 'local' : 'remote')
+  state.url = isWelcome(url) ? '' : url
+  showUrl(state.url)
   save()
   if (!state.sync.nav || navLock) return
   navLock = true
@@ -565,7 +578,7 @@ function isLocal (url) {
 
 function normalizeUrl (raw) {
   const value = (raw || '').trim()
-  if (!value) return 'about:blank'
+  if (!value) return WELCOME_URL
   if (/^[a-z]+:\/\//i.test(value) || value === 'about:blank') return value
   if (/^localhost|^127\.0\.0\.1|^0\.0\.0\.0|^\[::1\]|^\d+\.\d+\.\d+\.\d+/.test(value)) {
     return 'http://' + value
@@ -599,7 +612,7 @@ function loadAll (url) {
   applyUrl(url)
   navLock = true
   for (const p of state.panels) {
-    try { p.webview.loadURL(state.url) } catch (_) {}
+    try { p.webview.loadURL(normalizeUrl(state.url)) } catch (_) {}
   }
   setTimeout(() => { navLock = false }, 500)
   save()
@@ -910,6 +923,10 @@ function paintInspector () {
   insBody.appendChild(tip)
   paintDistance()
 
+  /* El diagrama que tenía el ratón encima ya no existe, y el frame ya ha
+   * soltado sus bandas: que el próximo hover no se crea que sigue puesto. */
+  bandsSent = null
+
   for (const sec of window.PreviewerInspect.sections(insState.data)) {
     const box = document.createElement('div')
     box.className = 'ins-sec'
@@ -917,24 +934,30 @@ function paintInspector () {
     title.className = 'ins-sec-title'
     title.textContent = sec.title
     box.appendChild(title)
-    for (const row of sec.rows) box.appendChild(insRow(row))
+    for (const row of sec.rows) {
+      box.appendChild(row.diagram ? insDiagram(row) : insRow(row))
+    }
     insBody.appendChild(box)
   }
 }
 
-/* La tipografía real se pregunta al proceso principal, que es quien puede
- * hablar por el protocolo de DevTools, y tarda unos milisegundos: el panel se
- * pinta ya y la fila se rellena cuando llega. Si para entonces has clicado
- * otra cosa, la respuesta se tira. */
-async function askPlatformFont (p) {
-  if (!insState.data || !insState.data.text || !insState.path) return
+/* Lo que sólo sabe el protocolo de DevTools: la tipografía que se ha pintado
+ * de verdad y de qué variable sale cada valor. Las dos cosas se preguntan en el
+ * mismo viaje al proceso principal —es la misma sesión y el mismo nodo— y
+ * tardan unos milisegundos: el panel se pinta ya y se repinta cuando llegan. Si
+ * para entonces has clicado otra cosa, la respuesta se tira. */
+async function askDetails (p) {
+  if (!insState.data || !insState.path) return
   const forPath = insState.path
-  let name = null
+  let out = null
   try {
-    name = await window.previewer.platformFont(p.webview.getWebContentsId(), forPath)
+    out = await window.previewer.inspectDetails(p.webview.getWebContentsId(), forPath)
   } catch (_) {}
-  if (!name || insState.path !== forPath || !insState.data.text) return
-  insState.data.text.rendered = name
+  if (!out || insState.path !== forPath || !insState.data) return
+  if (out.font && insState.data.text) insState.data.text.rendered = out.font
+  insState.data.tokens = out.tokens || null
+  insState.data.style = out.style || null
+  if (!out.font && !out.tokens) return
   paintInspector()
 }
 
@@ -967,11 +990,147 @@ function paintDistance () {
   why.textContent = insState.why || ''
 }
 
+/* La variable de la que sale un valor, en su propia línea debajo.
+ *
+ * Debajo y no al lado: un `--color-surface-raised` no cabe junto a un hexa en
+ * un panel de 340px, y partido por la mitad no se puede ni leer ni copiar.
+ *
+ * Dos lecturas, y la segunda es la que justifica todo esto: en azul apagado,
+ * «esto sale del sistema» —el caso bueno, que no hay que mirar—; en ámbar,
+ * «el valor está escrito a mano y hay un token con ese mismo valor», que es el
+ * fallo que no se ve en la pantalla porque hoy se ve exactamente igual, y el
+ * día que el token cambie éste se quedará atrás. */
+function insToken (token) {
+  /* Un `span` y no un `button`: la fila entera ya es un botón —copia el valor—
+   * y un botón dentro de otro es anidamiento inválido. El clic se queda aquí,
+   * así que pulsar el nombre copia la variable y no el valor. */
+  const el = document.createElement('span')
+  el.className = 'ins-var' + (token.warn ? ' loose' : '') + (token.piece ? ' piece' : '')
+  el.textContent = token.label
+  /* El nombre entero vive aquí: en la línea se enseña recortado porque no cabe,
+   * pero para ir a buscarlo al CSS hace falta completo. */
+  el.title = token.name + ': ' + token.value +
+    (token.alt ? '\nMismo color: ' + token.alt.join(', ') : '') +
+    '\nCopiar «var(' + token.name + ')»'
+  el.addEventListener('click', (e) => {
+    e.stopPropagation()
+    copyValue('var(' + token.name + ')')
+  })
+  return el
+}
+
+/* El diagrama de la caja: anillos anidados, de dentro hacia fuera, con el
+ * número de cada lado pegado a su lado. Qué anillos hay y qué mide cada uno lo
+ * decide `boxModel` en inspect.js; aquí sólo se pinta. */
+const BM_SIDES = ['t', 'r', 'b', 'l']
+const BM_NAMES = { t: 'top', r: 'right', b: 'bottom', l: 'left' }
+const RINGS = ['margin', 'padding']
+
+/* Lo que hay que reservar a un lado del anillo para que quepa su cifra: el
+ * hueco que deja la etiqueta al borde, más lo que ocupa el texto en la
+ * monoespaciada de 10px, más un respiro. Nunca menos que el mínimo, que es lo
+ * que le da forma de marco a un anillo lleno de ceros. */
+const bmPad = (value) => Math.max(21, 10 + String(value).length * 6.2) + 'px'
+
+const sideOf = (el) =>
+  BM_NAMES[BM_SIDES.find((s) => el.classList.contains('ins-bm-' + s))] || null
+
+/* El ratón sobre el diagrama pinta esa banda encima de la propia página, que
+ * es la manera de contestar «¿este hueco es de verdad el margen de esto?» sin
+ * discutirlo: o la banda cae sobre el hueco o no cae. Sobre un número se pinta
+ * sólo ese lado; sobre el anillo, los cuatro.
+ *
+ * Se manda sólo cuando cambia: el `mousemove` dispara decenas de veces por
+ * segundo y el frame repinta la capa entera con cada mensaje. */
+let bandsSent = null
+
+function showBands (spec) {
+  const key = spec ? spec.ring + ':' + (spec.side || '') : null
+  if (key === bandsSent) return
+  bandsSent = key
+  const p = state.panels.find((q) => q.id === insState.id)
+  if (p && p.webview) {
+    try { p.webview.send('inspect-bands', spec) } catch (_) {}
+  }
+}
+
+function insDiagram (row) {
+  const d = row.diagram
+  let node = document.createElement('div')
+  node.className = 'ins-bm-c'
+  node.textContent = d.w + ' × ' + d.h
+
+  /* `rings` viene de fuera adentro y se envuelve al revés: el padding es el
+   * primero en abrazar al contenido y el margen el último de todos. */
+  for (const ring of d.rings.slice().reverse()) {
+    const wrap = document.createElement('div')
+    wrap.className = 'ins-bm-ring ins-bm-' + ring
+    /* El hueco de cada lado lo marca la cifra que va a ir ahí. Con uno fijo,
+     * un `130` —o cualquier cosa con decimal— no cabía y se metía encima del
+     * anillo de dentro. Los dos lados por separado, que casi nunca miden lo
+     * mismo y reservar en ambos lo que pide el peor deja el dibujo descentrado. */
+    wrap.style.paddingLeft = bmPad(d[ring][3])
+    wrap.style.paddingRight = bmPad(d[ring][1])
+
+    const name = document.createElement('span')
+    name.className = 'ins-bm-n'
+    name.textContent = ring
+    wrap.appendChild(name)
+
+    d[ring].forEach((n, i) => {
+      const v = document.createElement('button')
+      v.className = 'ins-bm-v ins-bm-' + BM_SIDES[i] + (n === 0 ? ' zero' : '')
+      v.textContent = String(n)
+      v.title = 'Copiar «' + n + 'px»'
+      v.addEventListener('click', () => copyValue(n + 'px'))
+      wrap.appendChild(v)
+    })
+
+    wrap.appendChild(node)
+    node = wrap
+  }
+
+  const box = document.createElement('div')
+  box.className = 'ins-bm'
+  box.appendChild(node)
+
+  /* Un solo oyente en el contenedor y no uno por anillo: los anillos están
+   * anidados, y `mouseleave` no salta al pasar de uno a su hijo, así que con
+   * oyentes sueltos la banda se quedaba pegada al anillo de fuera. Aquí se
+   * pregunta en cada movimiento sobre qué se está, que siempre acierta. */
+  box.addEventListener('mousemove', (e) => {
+    const ring = e.target.closest('.ins-bm-ring')
+    if (!ring) return showBands(null)
+    const name = RINGS.find((r) => ring.classList.contains('ins-bm-' + r))
+    const value = e.target.closest('.ins-bm-v')
+    showBands(name ? { ring: name, side: value ? sideOf(value) : null } : null)
+  })
+  box.addEventListener('mouseleave', () => showBands(null))
+  /* Al pie y no dentro de ningún anillo: habla del padding entero, y metido en
+   * el marco del padding competiría por el sitio con sus cuatro números. */
+  if (row.token) {
+    const foot = document.createElement('div')
+    foot.className = 'ins-bm-foot'
+    const k = document.createElement('span')
+    k.textContent = 'padding'
+    foot.append(k, insToken(row.token))
+    box.appendChild(foot)
+  }
+  return box
+}
+
+async function copyValue (text) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast('Copiado: ' + text)
+  } catch (_) { toast('No se pudo copiar al portapapeles') }
+}
+
 /* Cada valor es un botón: el gesto que sigue a leer un hex o un tamaño es
  * pegarlo en otro sitio. */
 function insRow (row) {
   const el = document.createElement('button')
-  el.className = 'ins-row'
+  el.className = 'ins-row' + (row.accent ? ' is-style' : '')
   /* La pila de fuentes completa y el elemento del que viene un fondo heredado
    * son datos de segundo orden: caben en el tooltip y no en la fila. */
   el.title = (row.note ? row.note + '\n' : '') + 'Copiar «' + row.v + '»'
@@ -998,14 +1157,10 @@ function insRow (row) {
     tag.textContent = row.tag
     v.appendChild(tag)
   }
+  if (row.token) v.appendChild(insToken(row.token))
 
   el.append(k, v)
-  el.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(row.v)
-      toast('Copiado: ' + row.v)
-    } catch (_) { toast('No se pudo copiar al portapapeles') }
-  })
+  el.addEventListener('click', () => copyValue(row.v))
   return el
 }
 
@@ -1885,8 +2040,7 @@ $('#scroll-mode').addEventListener('click', (e) => {
 })
 
 function syncChrome () {
-  urlInput.value = state.url
-  urlStatus.className = 'scheme ' + (isLocal(state.url) ? 'local' : 'remote')
+  showUrl(state.url)
   for (const btn of document.querySelectorAll('.toggle[data-sync]')) {
     btn.classList.toggle('on', !!state.sync[btn.dataset.sync])
   }
